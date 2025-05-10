@@ -1,8 +1,8 @@
 export interface Inventario {
   id: string
   codigo: string
-  dataInicio: string
-  dataFim: string | null
+  data_inicio: string
+  data_fim: string | null
   responsavel: string
   status: "ativo" | "finalizado"
   progresso: {
@@ -10,6 +10,9 @@ export interface Inventario {
     setores: number
     fornecedores: number
   }
+  // Manter compatibilidade com código existente
+  dataInicio?: string
+  dataFim?: string
 }
 
 export interface Contagem {

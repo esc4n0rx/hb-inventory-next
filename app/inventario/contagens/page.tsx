@@ -1,8 +1,6 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useInventarioStore } from "@/lib/store"
 import { toast } from "sonner"
 import { motion } from "framer-motion"
@@ -23,17 +21,32 @@ import { Label } from "@/components/ui/label"
 import { lojas } from "@/data/lojas"
 import { setoresCD } from "@/data/setores"
 import { ativos } from "@/data/ativos"
-import { fornecedores } from "@/data/fornecedores"
 import type { Contagem } from "@/lib/types"
 
 export default function ContagensPage() {
-  const { inventarioAtual, contagens, adicionarContagem, editarContagem, removerContagem } = useInventarioStore()
+  const { 
+    inventarioAtual, 
+    contagens, 
+    adicionarContagem, 
+    editarContagem, 
+    removerContagem,
+    carregarContagens,
+    isLoading
+  } = useInventarioStore()
+  
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterTipo, setFilterTipo] = useState<string>("todos")
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    tipo: "loja" | "setor" | "fornecedor";
+    origem: string;
+    destino: string;
+    ativo: string;
+    quantidade: number;
+    responsavel: string;
+  }>({
     tipo: "loja",
     origem: "",
     destino: "",
@@ -41,6 +54,13 @@ export default function ContagensPage() {
     quantidade: 1,
     responsavel: "",
   })
+
+  // Carregar contagens ao montar o componente
+  useEffect(() => {
+    if (inventarioAtual) {
+      carregarContagens(inventarioAtual.id);
+    }
+  }, [inventarioAtual, carregarContagens]);
 
   const resetForm = () => {
     setFormData({
@@ -82,7 +102,7 @@ export default function ContagensPage() {
     resetForm()
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!inventarioAtual) {
@@ -92,10 +112,10 @@ export default function ContagensPage() {
 
     try {
       if (editingId) {
-        editarContagem(editingId, formData)
+        await editarContagem(editingId, formData)
         toast.success("Contagem atualizada com sucesso!")
       } else {
-        adicionarContagem({
+        await adicionarContagem({
           inventarioId: inventarioAtual.id,
           ...formData,
         })
@@ -112,10 +132,10 @@ export default function ContagensPage() {
     }
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm("Tem certeza que deseja remover esta contagem?")) {
       try {
-        removerContagem(id)
+        await removerContagem(id)
         toast.success("Contagem removida com sucesso!")
       } catch (error) {
         if (error instanceof Error) {
@@ -163,11 +183,39 @@ export default function ContagensPage() {
 
           <Button
             onClick={() => handleOpenDialog()}
-            disabled={!inventarioAtual || inventarioAtual.status !== "ativo"}
+            disabled={!inventarioAtual || inventarioAtual.status !== "ativo" || isLoading}
             className="flex items-center gap-2"
           >
-            <Plus className="h-4 w-4" />
-            Nova Contagem
+            {isLoading ? (
+              <>
+                <svg
+                  className="animate-spin h-4 w-4 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Carregando...
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4" />
+                Nova Contagem
+              </>
+            )}
           </Button>
         </div>
 
@@ -201,6 +249,29 @@ export default function ContagensPage() {
             <p className="text-muted-foreground">
               Não há inventário ativo no momento. Inicie um novo inventário para gerenciar contagens.
             </p>
+          </div>
+        ) : isLoading ? (
+          <div className="flex justify-center items-center h-40">
+            <svg
+              className="animate-spin h-8 w-8 text-accent"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
           </div>
         ) : (
           <div className="border rounded-lg">
@@ -238,7 +309,7 @@ export default function ContagensPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenDialog(contagem)}
-                            disabled={inventarioAtual.status !== "ativo"}
+                            disabled={inventarioAtual.status !== "ativo" || isLoading}
                           >
                             <Edit className="h-4 w-4" />
                             <span className="sr-only">Editar</span>
@@ -247,7 +318,7 @@ export default function ContagensPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDelete(contagem.id)}
-                            disabled={inventarioAtual.status !== "ativo"}
+                            disabled={inventarioAtual.status !== "ativo" || isLoading}
                           >
                             <Trash className="h-4 w-4" />
                             <span className="sr-only">Remover</span>
@@ -283,7 +354,7 @@ export default function ContagensPage() {
                 <Select
                   value={formData.tipo}
                   onValueChange={(value) => setFormData({ ...formData, tipo: value as any, origem: "" })}
-                  disabled={!!editingId}
+                  disabled={!!editingId || isLoading}
                 >
                   <SelectTrigger id="tipo" className="col-span-3">
                     <SelectValue placeholder="Selecione o tipo" />
@@ -300,7 +371,11 @@ export default function ContagensPage() {
                 <Label htmlFor="origem" className="text-right">
                   {formData.tipo === "loja" ? "Loja" : formData.tipo === "setor" ? "Setor" : "Fornecedor"}
                 </Label>
-                <Select value={formData.origem} onValueChange={(value) => setFormData({ ...formData, origem: value })}>
+                <Select 
+                  value={formData.origem} 
+                  onValueChange={(value) => setFormData({ ...formData, origem: value })}
+                  disabled={isLoading}
+                >
                   <SelectTrigger id="origem" className="col-span-3">
                     <SelectValue
                       placeholder={`Selecione ${formData.tipo === "loja" ? "a loja" : formData.tipo === "setor" ? "o setor" : "o fornecedor"}`}
@@ -320,7 +395,11 @@ export default function ContagensPage() {
                 <Label htmlFor="ativo" className="text-right">
                   Ativo
                 </Label>
-                <Select value={formData.ativo} onValueChange={(value) => setFormData({ ...formData, ativo: value })}>
+                <Select 
+                  value={formData.ativo} 
+                  onValueChange={(value) => setFormData({ ...formData, ativo: value })}
+                  disabled={isLoading}
+                >
                   <SelectTrigger id="ativo" className="col-span-3">
                     <SelectValue placeholder="Selecione o ativo" />
                   </SelectTrigger>
@@ -345,6 +424,7 @@ export default function ContagensPage() {
                   value={formData.quantidade}
                   onChange={(e) => setFormData({ ...formData, quantidade: Number.parseInt(e.target.value) || 1 })}
                   className="col-span-3"
+                  disabled={isLoading}
                 />
               </div>
 
@@ -358,16 +438,45 @@ export default function ContagensPage() {
                   onChange={(e) => setFormData({ ...formData, responsavel: e.target.value })}
                   placeholder="Nome do responsável pela contagem"
                   className="col-span-3"
+                  disabled={isLoading}
                 />
               </div>
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseDialog}>
+              <Button type="button" variant="outline" onClick={handleCloseDialog} disabled={isLoading}>
                 Cancelar
               </Button>
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button type="submit">{editingId ? "Salvar Alterações" : "Adicionar Contagem"}</Button>
+                <Button type="submit" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <svg
+                        className="animate-spin -ml-1 mr-2 h-4 w-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      {editingId ? "Salvando..." : "Adicionando..."}
+                    </>
+                  ) : (
+                    editingId ? "Salvar Alterações" : "Adicionar Contagem"
+                  )}
+                </Button>
               </motion.div>
             </DialogFooter>
           </form>
@@ -376,3 +485,6 @@ export default function ContagensPage() {
     </div>
   )
 }
+
+// Importações locais que não mudaram
+import { fornecedores } from "@/data/fornecedores"

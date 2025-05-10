@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState , useEffect} from "react"
 import { useInventarioStore } from "@/lib/store"
 import { toast } from "sonner"
 import { motion } from "framer-motion"
@@ -26,7 +26,13 @@ import { fornecedores } from "@/data/fornecedores"
 import type { Contagem } from "@/lib/types"
 
 export default function FornecedoresPage() {
-  const { inventarioAtual, contagens, adicionarContagem } = useInventarioStore()
+    const { 
+    inventarioAtual, 
+    contagens, 
+    adicionarContagem,
+    carregarContagens,
+    isLoading 
+  } = useInventarioStore()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedFornecedor, setSelectedFornecedor] = useState<string | null>(null)
@@ -37,6 +43,13 @@ export default function FornecedoresPage() {
     quantidade: 1,
     responsavel: "",
   })
+
+
+  useEffect(() => {
+    if (inventarioAtual) {
+      carregarContagens(inventarioAtual.id);
+    }
+  }, [inventarioAtual, carregarContagens]);
 
   const resetForm = () => {
     setFormData({
@@ -63,7 +76,7 @@ export default function FornecedoresPage() {
     resetForm()
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!inventarioAtual) {
@@ -77,7 +90,7 @@ export default function FornecedoresPage() {
     }
 
     try {
-      adicionarContagem({
+      await adicionarContagem({
         inventarioId: inventarioAtual.id,
         tipo: "fornecedor",
         ...formData,

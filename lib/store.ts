@@ -1,28 +1,39 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import type { Inventario, Contagem, DadosTransito } from "./types"
-import { lojas } from "@/data/lojas"
-import { setoresCD } from "@/data/setores"
+
+
+
+
 
 interface InventarioStore {
+  atualizarProgressoInventario: any
   inventarioAtual: Inventario | null
   inventarios: Inventario[]
   contagens: Contagem[]
   dadosTransito: DadosTransito[]
+  isLoading: boolean
+  error: string | null
+
+  // Carregar dados iniciais
+  carregarInventarioAtivo: () => Promise<void>
+  carregarInventarios: () => Promise<void>
+  carregarContagens: (inventarioId?: string) => Promise<void>
 
   // Ações de inventário
-  iniciarInventario: (responsavel: string) => void
-  finalizarInventario: () => void
-  carregarInventario: (id: string) => void
+  iniciarInventario: (responsavel: string) => Promise<void>
+  finalizarInventario: () => Promise<void>
+  carregarInventario: (id: string) => Promise<void>
 
   // Ações de contagem
-  adicionarContagem: (contagem: Omit<Contagem, "id" | "dataContagem">) => void
-  editarContagem: (id: string, dados: Partial<Contagem>) => void
-  removerContagem: (id: string) => void
+  adicionarContagem: (contagem: Omit<Contagem, "id" | "dataContagem">) => Promise<void>
+  editarContagem: (id: string, dados: Partial<Contagem>) => Promise<void>
+  removerContagem: (id: string) => Promise<void>
 
   // Ações de trânsito
   adicionarTransito: (dados: Omit<DadosTransito, "id" | "dataEnvio">) => void
   atualizarStatusTransito: (id: string, status: DadosTransito["status"]) => void
+  carregarDadosTransito: (inventarioId?: string) => Promise<void>
 
   // Estatísticas
   getEstatisticas: () => {
@@ -44,210 +55,447 @@ export const useInventarioStore = create<InventarioStore>()(
       inventarios: [],
       contagens: [],
       dadosTransito: [],
+      isLoading: false,
+      error: null,
 
-      iniciarInventario: (responsavel: string) => {
+      carregarInventarioAtivo: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await fetch('/api/inventarios/ativo');
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao carregar inventário ativo');
+          }
+          const data = await response.json();
+          
+          // Se não tiver inventário ativo, data será null
+          set({ inventarioAtual: data });
+          
+          // Se houver um inventário ativo, carregar suas contagens
+          if (data) {
+            await get().carregarContagens(data.id);
+          }
+        } catch (error) {
+          console.error('Erro ao carregar inventário ativo:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      atualizarProgressoInventario: async (inventarioId: string) => {
+        try {
+          const response = await fetch(`/api/inventarios/${inventarioId}/progresso`, {
+            method: 'PATCH',
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao atualizar progresso');
+          }
+
+          const inventarioAtualizado = await response.json();
+          
+          // Atualizar o estado local com o progresso atualizado
+          set((state) => ({
+            inventarioAtual: state.inventarioAtual?.id === inventarioId 
+              ? { ...state.inventarioAtual, progresso: inventarioAtualizado.progresso }
+              : state.inventarioAtual,
+            inventarios: state.inventarios.map((inv) => 
+              inv.id === inventarioId ? { ...inv, progresso: inventarioAtualizado.progresso } : inv
+            ),
+          }));
+        } catch (error) {
+          console.error('Erro ao atualizar progresso:', error);
+        }
+      },
+
+      carregarInventarios: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await fetch('/api/inventarios');
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao carregar inventários');
+          }
+          const data = await response.json();
+          set({ inventarios: data });
+        } catch (error) {
+          console.error('Erro ao carregar inventários:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      carregarContagens: async (inventarioId) => {
+        set({ isLoading: true, error: null });
+        try {
+          const idToUse = inventarioId || get().inventarioAtual?.id;
+          
+          if (!idToUse) {
+            set({ contagens: [] });
+            return;
+          }
+          
+          const response = await fetch(`/api/contagens?inventarioId=${idToUse}`);
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao carregar contagens');
+          }
+          const data = await response.json();
+          set({ contagens: data });
+        } catch (error) {
+          console.error('Erro ao carregar contagens:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      iniciarInventario: async (responsavel: string) => {
         const { inventarioAtual } = get()
 
         if (inventarioAtual && inventarioAtual.status === "ativo") {
           throw new Error("Já existe um inventário em andamento")
         }
 
-        const dataAtual = new Date()
-        const mes = dataAtual.toLocaleString("pt-BR", { month: "short" }).toUpperCase()
-        const ano = dataAtual.getFullYear()
+        set({ isLoading: true, error: null });
+        
+        try {
+          const response = await fetch('/api/inventarios', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ responsavel }),
+          });
 
-        const novoInventario: Inventario = {
-          id: crypto.randomUUID(),
-          codigo: `INV-${mes}-${ano}`,
-          dataInicio: dataAtual.toISOString(),
-          dataFim: null,
-          responsavel,
-          status: "ativo",
-          progresso: {
-            lojas: 0,
-            setores: 0,
-            fornecedores: 0,
-          },
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao iniciar inventário');
+          }
+
+          const novoInventario = await response.json();
+          
+          set((state) => ({
+            inventarioAtual: novoInventario,
+            inventarios: [...state.inventarios, novoInventario],
+          }));
+        } catch (error) {
+          console.error('Erro ao iniciar inventário:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+          throw error;
+        } finally {
+          set({ isLoading: false });
         }
-
-        set((state) => ({
-          inventarioAtual: novoInventario,
-          inventarios: [...state.inventarios, novoInventario],
-        }))
       },
 
-      finalizarInventario: () => {
+      finalizarInventario: async () => {
         const { inventarioAtual } = get()
 
         if (!inventarioAtual) {
           throw new Error("Não há inventário ativo para finalizar")
         }
 
-        const inventarioFinalizado: Inventario = {
-          ...inventarioAtual,
-          dataFim: new Date().toISOString(),
-          status: "finalizado",
-        }
+        set({ isLoading: true, error: null });
+        
+        try {
+          const response = await fetch(`/api/inventarios/${inventarioAtual.id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status: 'finalizado' }),
+          });
 
-        set((state) => ({
-          inventarioAtual: null,
-          inventarios: state.inventarios.map((inv) => (inv.id === inventarioAtual.id ? inventarioFinalizado : inv)),
-        }))
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao finalizar inventário');
+          }
+
+          const inventarioFinalizado = await response.json();
+          
+          set((state) => ({
+            inventarioAtual: null,
+            inventarios: state.inventarios.map((inv) => 
+              inv.id === inventarioAtual.id ? inventarioFinalizado : inv
+            ),
+          }));
+        } catch (error) {
+          console.error('Erro ao finalizar inventário:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+          throw error;
+        } finally {
+          set({ isLoading: false });
+        }
       },
 
-      carregarInventario: (id: string) => {
-        const { inventarios, inventarioAtual } = get()
+      carregarInventario: async (id: string) => {
+        const { inventarioAtual } = get()
 
         if (inventarioAtual && inventarioAtual.status === "ativo") {
           throw new Error("Finalize o inventário atual antes de carregar outro")
         }
 
-        const inventario = inventarios.find((inv) => inv.id === id)
+        set({ isLoading: true, error: null });
+        
+        try {
+          const response = await fetch(`/api/inventarios/${id}`);
+          
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao carregar inventário');
+          }
 
-        if (!inventario) {
-          throw new Error("Inventário não encontrado")
+          const inventario = await response.json();
+          
+          set({ inventarioAtual: inventario });
+          
+          // Carregar contagens deste inventário
+          await get().carregarContagens(id);
+        } catch (error) {
+          console.error('Erro ao carregar inventário:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+          throw error;
+        } finally {
+          set({ isLoading: false });
         }
-
-        set({ inventarioAtual: inventario })
       },
 
-      adicionarContagem: (dados) => {
-        const { inventarioAtual } = get()
+      adicionarContagem: async (dados) => {
+        const { inventarioAtual } = get();
 
         if (!inventarioAtual || inventarioAtual.status !== "ativo") {
-          throw new Error("Não há inventário ativo para adicionar contagem")
+          throw new Error("Não há inventário ativo para adicionar contagem");
         }
 
-        const novaContagem: Contagem = {
-          id: crypto.randomUUID(),
-          inventarioId: inventarioAtual.id,
-          dataContagem: new Date().toISOString(),
-          ...dados,
+        set({ isLoading: true, error: null });
+
+        try {
+          const response = await fetch('/api/contagens', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...dados,
+            }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao adicionar contagem');
+          }
+
+          const novaContagem = await response.json();
+          
+          set((state) => ({
+            contagens: [...state.contagens, novaContagem],
+          }));
+          
+          if (inventarioAtual) {
+              await get().atualizarProgressoInventario(inventarioAtual.id);
+            }
+          
+        } catch (error) {
+          console.error('Erro ao adicionar contagem:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+          throw error;
+        } finally {
+          set({ isLoading: false });
         }
-
-        set((state) => ({
-          contagens: [...state.contagens, novaContagem],
-        }))
-
-        // Atualizar progresso
-        const estatisticas = get().getEstatisticas()
-        set((state) => ({
-          inventarioAtual: state.inventarioAtual
-            ? {
-                ...state.inventarioAtual,
-                progresso: estatisticas.progresso,
-              }
-            : null,
-          inventarios: state.inventarios.map((inv) =>
-            inv.id === inventarioAtual.id
-              ? {
-                  ...inv,
-                  progresso: estatisticas.progresso,
-                }
-              : inv,
-          ),
-        }))
       },
 
-      editarContagem: (id, dados) => {
-        const { inventarioAtual } = get()
+      editarContagem: async (id, dados) => {
+        const { inventarioAtual } = get();
 
         if (!inventarioAtual || inventarioAtual.status !== "ativo") {
-          throw new Error("Não há inventário ativo para editar contagem")
+          throw new Error("Não há inventário ativo para editar contagem");
         }
 
-        set((state) => ({
-          contagens: state.contagens.map((contagem) => (contagem.id === id ? { ...contagem, ...dados } : contagem)),
-        }))
+        set({ isLoading: true, error: null });
 
-        // Atualizar progresso
-        const estatisticas = get().getEstatisticas()
-        set((state) => ({
-          inventarioAtual: state.inventarioAtual
-            ? {
-                ...state.inventarioAtual,
-                progresso: estatisticas.progresso,
-              }
-            : null,
-          inventarios: state.inventarios.map((inv) =>
-            inv.id === inventarioAtual.id
-              ? {
-                  ...inv,
-                  progresso: estatisticas.progresso,
-                }
-              : inv,
-          ),
-        }))
+        try {
+          const response = await fetch(`/api/contagens/${id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(dados),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao editar contagem');
+          }
+
+          const contagemAtualizada = await response.json();
+          
+          set((state) => ({
+            contagens: state.contagens.map((contagem) => 
+              contagem.id === id ? contagemAtualizada : contagem
+            ),
+          }));
+          
+          if (inventarioAtual) {
+              await get().atualizarProgressoInventario(inventarioAtual.id);
+            }
+          
+        } catch (error) {
+          console.error('Erro ao editar contagem:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+          throw error;
+        } finally {
+          set({ isLoading: false });
+        }
       },
 
-      removerContagem: (id) => {
-        const { inventarioAtual } = get()
+      removerContagem: async (id) => {
+        const { inventarioAtual } = get();
 
         if (!inventarioAtual || inventarioAtual.status !== "ativo") {
-          throw new Error("Não há inventário ativo para remover contagem")
+          throw new Error("Não há inventário ativo para remover contagem");
         }
 
-        set((state) => ({
-          contagens: state.contagens.filter((contagem) => contagem.id !== id),
-        }))
+        set({ isLoading: true, error: null });
 
-        // Atualizar progresso
-        const estatisticas = get().getEstatisticas()
-        set((state) => ({
-          inventarioAtual: state.inventarioAtual
-            ? {
-                ...state.inventarioAtual,
-                progresso: estatisticas.progresso,
-              }
-            : null,
-          inventarios: state.inventarios.map((inv) =>
-            inv.id === inventarioAtual.id
-              ? {
-                  ...inv,
-                  progresso: estatisticas.progresso,
-                }
-              : inv,
-          ),
-        }))
+        try {
+          const response = await fetch(`/api/contagens/${id}`, {
+            method: 'DELETE',
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao remover contagem');
+          }
+          
+          set((state) => ({
+            contagens: state.contagens.filter((contagem) => contagem.id !== id),
+          }));
+          
+          if (inventarioAtual) {
+              await get().atualizarProgressoInventario(inventarioAtual.id);
+            }
+          
+        } catch (error) {
+          console.error('Erro ao remover contagem:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+          throw error;
+        } finally {
+          set({ isLoading: false });
+        }
       },
 
-      adicionarTransito: (dados) => {
-        const { inventarioAtual } = get()
+      carregarDadosTransito: async (inventarioId?: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          // Se não passar inventarioId, usa o inventarioAtual
+          const idToUse = inventarioId || get().inventarioAtual?.id;
+          
+          if (!idToUse) {
+            set({ dadosTransito: [] });
+            return;
+          }
+          
+          const response = await fetch(`/api/transito?inventarioId=${idToUse}`);
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao carregar dados de trânsito');
+          }
+          const data = await response.json();
+          set({ dadosTransito: data });
+        } catch (error) {
+          console.error('Erro ao carregar dados de trânsito:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      adicionarTransito: async (dados) => {
+        const { inventarioAtual } = get();
 
         if (!inventarioAtual || inventarioAtual.status !== "ativo") {
-          throw new Error("Não há inventário ativo para adicionar dados de trânsito")
+          throw new Error("Não há inventário ativo para adicionar dados de trânsito");
         }
 
-        const novoTransito: DadosTransito = {
-          id: crypto.randomUUID(),
-          inventarioId: inventarioAtual.id,
-          dataEnvio: new Date().toISOString(),
-          status: "enviado",
-          ...dados,
-        }
+        set({ isLoading: true, error: null });
 
-        set((state) => ({
-          dadosTransito: [...state.dadosTransito, novoTransito],
-        }))
+        try {
+          const response = await fetch('/api/transito', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...dados,
+              inventarioId: inventarioAtual.id,
+            }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao adicionar dado de trânsito');
+          }
+
+          const novoTransito = await response.json();
+          
+          set((state) => ({
+            dadosTransito: [...state.dadosTransito, novoTransito],
+          }));
+        } catch (error) {
+          console.error('Erro ao adicionar dado de trânsito:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+          throw error;
+        } finally {
+          set({ isLoading: false });
+        }
       },
 
-      atualizarStatusTransito: (id, status) => {
-        set((state) => ({
-          dadosTransito: state.dadosTransito.map((transito) =>
-            transito.id === id
-              ? {
-                  ...transito,
-                  status,
-                  dataRecebimento: status === "recebido" ? new Date().toISOString() : transito.dataRecebimento,
-                }
-              : transito,
-          ),
-        }))
+      atualizarStatusTransito: async (id, status) => {
+        const { inventarioAtual } = get();
+
+        if (!inventarioAtual || inventarioAtual.status !== "ativo") {
+          throw new Error("Não há inventário ativo para atualizar status de trânsito");
+        }
+
+        set({ isLoading: true, error: null });
+
+        try {
+          const response = await fetch(`/api/transito/${id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Erro ao atualizar status');
+          }
+
+          const transitoAtualizado = await response.json();
+          
+          set((state) => ({
+            dadosTransito: state.dadosTransito.map((transito) => 
+              transito.id === id ? transitoAtualizado : transito
+            ),
+          }));
+        } catch (error) {
+          console.error('Erro ao atualizar status:', error);
+          set({ error: error instanceof Error ? error.message : 'Erro desconhecido' });
+          throw error;
+        } finally {
+          set({ isLoading: false });
+        }
       },
 
       getEstatisticas: () => {
         const { inventarioAtual, contagens } = get()
-
+        
+        // Código existente para cálculo de estatísticas (sem alterações)
         if (!inventarioAtual) {
           return {
             totalLojasContadas: 0,
@@ -307,6 +555,14 @@ export const useInventarioStore = create<InventarioStore>()(
     }),
     {
       name: "hb-inventory-storage",
-    },
-  ),
+      // Não persistir alguns campos que são carregados da API
+      partialize: (state) => ({
+        dadosTransito: state.dadosTransito,
+      }),
+    }
+  )
 )
+
+// Importações locais para o componente
+import { lojas } from "@/data/lojas"
+import { setoresCD } from "@/data/setores"

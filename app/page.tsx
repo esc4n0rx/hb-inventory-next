@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState , useEffect} from "react"
 import { useInventarioStore } from "@/lib/store"
 import { toast } from "sonner"
 import { motion } from "framer-motion"
@@ -15,13 +15,40 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 export default function Home() {
-  const { inventarioAtual, finalizarInventario, getEstatisticas } = useInventarioStore()
+  const { 
+    inventarioAtual, 
+    finalizarInventario, 
+    carregarInventarioAtivo,
+    carregarInventarios,
+    getEstatisticas,
+    carregarContagens,
+    carregarDadosTransito,
+    inventarios,
+    isLoading 
+  } = useInventarioStore()
+  
   const [novoInventarioDialogOpen, setNovoInventarioDialogOpen] = useState(false)
   const [carregarInventarioDialogOpen, setCarregarInventarioDialogOpen] = useState(false)
 
+useEffect(() => {
+  const carregarDados = async () => {
+    await carregarInventarioAtivo();
+    await carregarInventarios();
+    
+    if (inventarioAtual) {
+      await Promise.all([
+        carregarContagens(inventarioAtual.id),
+        carregarDadosTransito(inventarioAtual.id)
+      ]);
+    }
+  };
+  
+  carregarDados();
+}, [carregarInventarioAtivo, carregarInventarios, carregarContagens, carregarDadosTransito]);
+
   const estatisticas = getEstatisticas()
 
-  const handleFinalizarInventario = () => {
+  const handleFinalizarInventario = async () => {
     if (!inventarioAtual) {
       toast.error("Não há inventário ativo para finalizar")
       return
@@ -29,7 +56,7 @@ export default function Home() {
 
     if (window.confirm("Tem certeza que deseja finalizar o inventário atual? Esta ação não pode ser desfeita.")) {
       try {
-        finalizarInventario()
+        await finalizarInventario()
         toast.success("Inventário finalizado com sucesso!")
       } catch (error) {
         if (error instanceof Error) {

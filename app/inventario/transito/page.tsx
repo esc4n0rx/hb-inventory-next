@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useInventarioStore } from "@/lib/store"
 import { toast } from "sonner"
 import { motion } from "framer-motion"
@@ -34,10 +34,25 @@ const centrosDistribuicao = [
 ]
 
 export default function TransitoPage() {
-  const { inventarioAtual, dadosTransito, adicionarTransito, atualizarStatusTransito } = useInventarioStore()
+  const { 
+    inventarioAtual, 
+    dadosTransito, 
+    adicionarTransito, 
+    atualizarStatusTransito,
+    carregarDadosTransito,
+    isLoading 
+  } = useInventarioStore()
+  
   const [dialogOpen, setDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterStatus, setFilterStatus] = useState<string>("todos")
+
+  // Carregar dados de trânsito ao montar o componente
+  useEffect(() => {
+    if (inventarioAtual) {
+      carregarDadosTransito(inventarioAtual.id);
+    }
+  }, [inventarioAtual, carregarDadosTransito]);
 
   const [formData, setFormData] = useState({
     origem: "",
@@ -72,7 +87,7 @@ export default function TransitoPage() {
     resetForm()
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!inventarioAtual) {
@@ -86,7 +101,7 @@ export default function TransitoPage() {
     }
 
     try {
-      adicionarTransito({
+      await adicionarTransito({
         inventarioId: inventarioAtual.id,
         ...formData,
       })
@@ -101,9 +116,9 @@ export default function TransitoPage() {
     }
   }
 
-  const handleUpdateStatus = (id: string, status: DadosTransito["status"]) => {
+  const handleUpdateStatus = async (id: string, status: DadosTransito["status"]) => {
     try {
-      atualizarStatusTransito(id, status)
+      await atualizarStatusTransito(id, status)
       toast.success("Status atualizado com sucesso!")
     } catch (error) {
       if (error instanceof Error) {
@@ -137,11 +152,39 @@ export default function TransitoPage() {
 
           <Button
             onClick={handleOpenDialog}
-            disabled={!inventarioAtual || inventarioAtual.status !== "ativo"}
+            disabled={!inventarioAtual || inventarioAtual.status !== "ativo" || isLoading}
             className="flex items-center gap-2"
           >
-            <Plus className="h-4 w-4" />
-            Novo Trânsito
+            {isLoading ? (
+              <>
+                <svg
+                  className="animate-spin -ml-1 mr-2 h-4 w-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Carregando...
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4" />
+                Novo Trânsito
+              </>
+            )}
           </Button>
         </div>
 
@@ -175,6 +218,29 @@ export default function TransitoPage() {
             <p className="text-muted-foreground">
               Não há inventário ativo no momento. Inicie um novo inventário para gerenciar dados de trânsito.
             </p>
+          </div>
+        ) : isLoading ? (
+          <div className="flex justify-center items-center h-40">
+            <svg
+              className="animate-spin h-8 w-8 text-accent"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
           </div>
         ) : (
           <div className="border rounded-lg">
@@ -230,6 +296,7 @@ export default function TransitoPage() {
                               size="sm"
                               onClick={() => handleUpdateStatus(transito.id, "recebido")}
                               className="flex items-center gap-1"
+                              disabled={isLoading}
                             >
                               <Truck className="h-3 w-3" />
                               <span>Marcar como Recebido</span>
@@ -241,6 +308,7 @@ export default function TransitoPage() {
                               size="sm"
                               onClick={() => handleUpdateStatus(transito.id, "enviado")}
                               className="flex items-center gap-1"
+                              disabled={isLoading}
                             >
                               <Edit className="h-3 w-3" />
                               <span>Marcar como Enviado</span>
@@ -270,7 +338,11 @@ export default function TransitoPage() {
                 <Label htmlFor="origem" className="text-right">
                   Origem
                 </Label>
-                <Select value={formData.origem} onValueChange={(value) => setFormData({ ...formData, origem: value })}>
+                <Select 
+                  value={formData.origem} 
+                  onValueChange={(value) => setFormData({ ...formData, origem: value })}
+                  disabled={isLoading}
+                >
                   <SelectTrigger id="origem" className="col-span-3">
                     <SelectValue placeholder="Selecione a origem" />
                   </SelectTrigger>
@@ -291,6 +363,7 @@ export default function TransitoPage() {
                 <Select
                   value={formData.destino}
                   onValueChange={(value) => setFormData({ ...formData, destino: value })}
+                  disabled={isLoading}
                 >
                   <SelectTrigger id="destino" className="col-span-3">
                     <SelectValue placeholder="Selecione o destino" />
@@ -309,7 +382,11 @@ export default function TransitoPage() {
                 <Label htmlFor="ativo" className="text-right">
                   Ativo
                 </Label>
-                <Select value={formData.ativo} onValueChange={(value) => setFormData({ ...formData, ativo: value })}>
+                <Select 
+                  value={formData.ativo} 
+                  onValueChange={(value) => setFormData({ ...formData, ativo: value })}
+                  disabled={isLoading}
+                >
                   <SelectTrigger id="ativo" className="col-span-3">
                     <SelectValue placeholder="Selecione o ativo" />
                   </SelectTrigger>
@@ -334,6 +411,7 @@ export default function TransitoPage() {
                   value={formData.quantidade}
                   onChange={(e) => setFormData({ ...formData, quantidade: Number.parseInt(e.target.value) || 1 })}
                   className="col-span-3"
+                  disabled={isLoading}
                 />
               </div>
 
@@ -344,6 +422,7 @@ export default function TransitoPage() {
                 <Select
                   value={formData.status}
                   onValueChange={(value) => setFormData({ ...formData, status: value as DadosTransito["status"] })}
+                  disabled={isLoading}
                 >
                   <SelectTrigger id="status" className="col-span-3">
                     <SelectValue placeholder="Selecione o status" />
@@ -357,11 +436,39 @@ export default function TransitoPage() {
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseDialog}>
+              <Button type="button" variant="outline" onClick={handleCloseDialog} disabled={isLoading}>
                 Cancelar
               </Button>
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button type="submit">Adicionar Trânsito</Button>
+                <Button type="submit" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <svg
+                        className="animate-spin -ml-1 mr-2 h-4 w-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Adicionando...
+                    </>
+                  ) : (
+                    "Adicionar Trânsito"
+                  )}
+                </Button>
               </motion.div>
             </DialogFooter>
           </form>
