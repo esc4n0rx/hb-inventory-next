@@ -95,18 +95,18 @@ export class ColheitaCertaIntegration {
    * Processa dados recebidos da API, convertendo para o formato esperado pelo sistema
    * @param response Resposta da API
    */
-  private processarContagens(contagens: ContagemColheitaCerta[]): Contagem[] {
-    return contagens.map(contagem => ({
-      id: Math.random().toString(36).substring(2, 15),
-      inventarioId: "",  // Será preenchido pelo store
-      tipo: "loja",
-      origem: contagem.loja_nome,
-      ativo: contagem.ativo_nome,
-      quantidade: contagem.quantidade,
-      dataContagem: new Date().toISOString(), // Data atual
-      responsavel: "integrador"
-    }));
-  }
+ private processarContagens(contagens: ContagemColheitaCerta[]): Contagem[] {
+  return contagens.map(contagem => ({
+    id: contagem.id.toString(), // Usar o ID real da API em vez de gerar um aleatório
+    inventarioId: "",  // Será preenchido pelo store
+    tipo: "loja",
+    origem: contagem.loja_nome,
+    ativo: contagem.ativo_nome,
+    quantidade: contagem.quantidade,
+    dataContagem: contagem.data_registro, // Usar a data da API em vez da data atual
+    responsavel: "integrador"
+  }));
+}
 
   /**
    * Processa dados recebidos da API
@@ -118,10 +118,17 @@ private handleResponse(response: ContagemResponse): void {
   if (response.success) {
     if (response.count > 0) {
       console.log(`[${timestamp}] Recebidas ${response.count} novas contagens`);
+      console.log(`Exemplo da primeira contagem:`, response.data[0]);
+      
+      // Processar dados
+      const contagensProcessadas = this.processarContagens(response.data);
+      console.log(`Processadas ${contagensProcessadas.length} contagens`);
       
       // Se houver um callback registrado, chama-o com os dados processados
       if (this.onNewData) {
-        this.onNewData(this.processarContagens(response.data));
+        this.onNewData(contagensProcessadas);
+      } else {
+        console.warn(`[${timestamp}] onNewData callback não está definido!`);
       }
     } else {
       console.log(`[${timestamp}] Verificação realizada - nenhuma nova contagem disponível`);

@@ -68,8 +68,7 @@ class IntegradorService {
       }
     });
   }
-
-  private iniciarIntegracao(): void {
+private iniciarIntegracao(): void {
   const store = useInventarioStore.getState();
   
   if (!store.inventarioAtual || store.inventarioAtual.status !== "ativo") {
@@ -87,28 +86,41 @@ class IntegradorService {
   const config = store.integradorConfig;
   console.log("Iniciando integração com configuração:", config);
   
-  // Criar uma nova instância do integrador com logs aprimorados
+  // Criar uma nova instância do integrador com callbacks bem definidos
   this.integration = new ColheitaCertaIntegration(
     config.apiUrl,
     config.apiKey,
     {
-      onNewData: this.handleNewContagens.bind(this),
-      onError: this.handleIntegrationError.bind(this)
+      onNewData: (contagens) => {
+        console.log(`onNewData chamado com ${contagens.length} contagens`);
+        this.handleNewContagens(contagens);
+      },
+      onError: (error) => {
+        console.error(`onError chamado:`, error);
+        this.handleIntegrationError(error);
+      }
     }
   );
   
   // Iniciar monitoramento com intervalo correto
   const intervalMs = config.syncInterval * 1000;
   console.log(`Monitoramento iniciado: verificando a cada ${config.syncInterval} segundos (${intervalMs}ms)`);
+  
+  // Começar com um timestamp recente para evitar importar contagens antigas
+  this.integration.resetTimestamp();
+  
+  // Iniciar o monitoramento
   this.integration.startMonitoring(intervalMs);
   
   // Atualizar último sync imediatamente para mostrar que começamos o monitoramento
   store.atualizarUltimoSync(new Date().toISOString());
   
-  // Executar uma verificação imediata
-  this.integration.checkOnce().catch(error => {
-    console.error("Erro na verificação inicial:", error);
-  });
+  // Executar uma verificação imediata após um pequeno delay para garantir que tudo está configurado
+  setTimeout(() => {
+    this.integration?.checkOnce().catch(error => {
+      console.error("Erro na verificação inicial:", error);
+    });
+  }, 2000);
 }
 
   private pararIntegracao(): void {
@@ -119,45 +131,54 @@ class IntegradorService {
     }
   }
 
-  private handleNewContagens(contagens: Contagem[]): void {
-  const store = useInventarioStore.getState();
-  const config = store.integradorConfig;
-  const timestamp = new Date().toLocaleString();
-  
-  console.log(`[${timestamp}] Processando ${contagens.length} novas contagens`);
-  
-  if (!store.inventarioAtual || store.inventarioAtual.status !== "ativo") {
-    console.error("Não há inventário ativo para importar contagens");
-    return;
-  }
-  
-  // Processar cada contagem recebida
-  contagens.forEach(async (contagem) => {
-    try {
-      if (config.autoImport) {
-        await store.adicionarContagem({
-          inventarioId: store.inventarioAtual!.id,
-          tipo: "loja",
-          origem: contagem.origem,
-          ativo: contagem.ativo,
-          quantidade: contagem.quantidade,
-          responsavel: "integrador",
-        });
-        console.log(`Contagem importada: ${contagem.origem} - ${contagem.ativo} (${contagem.quantidade})`);
-      }
-      
-      if (config.notifyOnCapture) {
-        toast.info(`Nova contagem capturada: ${contagem.origem} - ${contagem.ativo} (${contagem.quantidade})`);
-      }
-    } catch (error) {
-      console.error("Erro ao processar contagem:", error);
+    private async handleNewContagens(contagens: Contagem[]): Promise<void> {
+    const store = useInventarioStore.getState();
+    const config = store.integradorConfig;
+    const timestamp = new Date().toLocaleString();
+    
+    console.log(`[${timestamp}] Processando ${contagens.length} novas contagens`);
+    
+    if (!store.inventarioAtual || store.inventarioAtual.status !== "ativo") {
+        console.error("Não há inventário ativo para importar contagens");
+        return;
     }
-  });
-  
-  // Atualizar timestamp da última sincronização
-  const novoTimestamp = new Date().toISOString();
-  store.atualizarUltimoSync(novoTimestamp);
-  console.log(`Última sincronização atualizada: ${novoTimestamp}`);
+    
+    let importadosComSucesso = 0;
+    let erros = 0;
+    
+    // Processar cada contagem recebida
+    for (const contagem of contagens) {
+        try {
+        console.log(`Processando contagem: ${contagem.origem} - ${contagem.ativo} (${contagem.quantidade})`);
+        
+        if (config.autoImport) {
+            await store.adicionarContagem({
+            inventarioId: store.inventarioAtual.id,
+            tipo: "loja",
+            origem: contagem.origem,
+            ativo: contagem.ativo,
+            quantidade: contagem.quantidade,
+            responsavel: "integrador",
+            });
+            importadosComSucesso++;
+            console.log(`Contagem importada com sucesso: ${contagem.origem} - ${contagem.ativo}`);
+        }
+        
+        if (config.notifyOnCapture) {
+            toast.info(`Nova contagem capturada: ${contagem.origem} - ${contagem.ativo} (${contagem.quantidade})`);
+        }
+        } catch (error) {
+        erros++;
+        console.error(`Erro ao processar contagem de ${contagem.origem}:`, error);
+        }
+    }
+    
+    console.log(`Importação finalizada: ${importadosComSucesso} sucesso, ${erros} erros`);
+    
+    // Atualizar timestamp da última sincronização
+    const novoTimestamp = new Date().toISOString();
+    store.atualizarUltimoSync(novoTimestamp);
+    console.log(`Última sincronização atualizada: ${novoTimestamp}`);
 }
 
   private handleIntegrationError(error: Error): void {

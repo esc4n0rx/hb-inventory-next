@@ -159,47 +159,61 @@ export default function IntegradorPage() {
   }, []);
   
 
-  // Atualizar tempo de atividade
   useEffect(() => {
   if (connectionStatus === "connected") {
     // Atualizar estatísticas a cada 5 segundos para ter feedback em tempo real
     const statsInterval = setInterval(() => {
-      // Adicionar um log periódico para mostrar atividade
-      const timestamp = new Date().toLocaleTimeString();
-      setCapturedCounts(prev => {
-        // Manter os logs existentes mas adicionar um novo de verificação
-        const existingLogs = [...prev];
-        
-        // Adicionar uma entrada de log para mostrar atividade
-        if (existingLogs.length > 100) {
-          existingLogs.pop(); // Remover o mais antigo se exceder 100 logs
-        }
-        
-        return existingLogs;
-      });
+      // Buscar estatísticas atualizadas do store
+      const store = useInventarioStore.getState();
+      const configAtual = store.integradorConfig;
       
-      // Atualizar o tempo de atividade
-      setStats(prev => {
-        // Calcular tempo de atividade real
-        const startTime = lastSync ? new Date(lastSync) : new Date();
-        const now = new Date();
-        const diffMs = now.getTime() - startTime.getTime();
-        const minutes = Math.floor((diffMs / 1000 / 60) % 60);
-        const hours = Math.floor(diffMs / 1000 / 60 / 60);
-        
-        return {
-          ...prev,
-          uptime: `${hours}h ${minutes}m`
-        };
-      });
+      // Verificar se há contagens relacionadas ao integrador
+      const contagensIntegrador = store.contagens.filter(c => 
+        c.responsavel === "integrador" && c.inventarioId === store.inventarioAtual?.id
+      );
       
+      // Atualizar estatísticas com base nas contagens do store
+      setStats(prev => ({
+        ...prev,
+        totalCaptured: contagensIntegrador.length,
+        totalImported: contagensIntegrador.length, // Todas as presentes no store já foram importadas
+        totalPending: 0, // Como estamos usando autoImport, não deve haver pendentes
+        uptime: calcularUptime(lastSync)
+      }));
+      
+      // Atualizar o array de contagens capturadas para exibição
+      const contagens = contagensIntegrador.map(c => ({
+        id: c.id,
+        loja: c.origem,
+        ativo: c.ativo,
+        quantidade: c.quantidade,
+        timestamp: c.dataContagem,
+        status: "imported" as const
+      }));
+      
+      // Atualizar somente se houver novas contagens
+      if (contagens.length > capturedCounts.length) {
+        setCapturedCounts(contagens);
+      }
     }, 5000);
     
     return () => {
       clearInterval(statsInterval);
     };
   }
-}, [connectionStatus, lastSync]);
+}, [connectionStatus, lastSync, capturedCounts.length]);
+
+  function calcularUptime(desde: string | null): string {
+    if (!desde) return "0h 0m";
+    
+    const startTime = new Date(desde);
+    const now = new Date();
+    const diffMs = now.getTime() - startTime.getTime();
+    const minutes = Math.floor((diffMs / 1000 / 60) % 60);
+    const hours = Math.floor(diffMs / 1000 / 60 / 60);
+    
+    return `${hours}h ${minutes}m`;
+  }
 
   useEffect(() => {
     // Limpar a instância anterior ao desmontar o componente
