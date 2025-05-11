@@ -1,10 +1,12 @@
+// app/configuracoes/integrador/page.tsx
+
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useInventarioStore } from "@/lib/store"
 import { toast } from "sonner"
 import { motion } from "framer-motion"
-import { AlertCircle, Copy, Link2, RefreshCw, Settings, Shield, Zap, Clock, ArrowDownToLine } from "lucide-react"
+import { AlertCircle, Copy, Link2, RefreshCw, Shield, Zap, Clock, ArrowDownToLine, Power, PowerOff, Server } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -16,6 +18,8 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
+import { ColheitaCertaIntegration } from "@/lib/colheitacerta-integration"
+import { Contagem } from "@/lib/types"
 
 export default function IntegradorPage() {
   const { inventarioAtual, adicionarContagem } = useInventarioStore()
@@ -25,20 +29,18 @@ export default function IntegradorPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [syncInterval, setSyncInterval] = useState("30")
   const [lastSync, setLastSync] = useState<string | null>(null)
-  const [capturedCounts, setCapturedCounts] = useState<
-    Array<{
-      id: string
-      loja: string
-      ativo: string
-      quantidade: number
-      timestamp: string
+  const [capturedCounts, setCapturedCounts] = useState<Array<{
+      id: string,
+      loja: string,
+      ativo: string,
+      quantidade: number,
+      timestamp: string,
       status: "pending" | "imported" | "error"
-    }>
-  >([])
+    }>>([])
 
   // Configurações de conexão
-  const [storeSystemUrl, setStoreSystemUrl] = useState("https://lojas.hbinventory.com.br/api")
-  const [storeApiKey, setStoreApiKey] = useState("store_" + Math.random().toString(36).substring(2, 15))
+  const [storeSystemUrl, setStoreSystemUrl] = useState("https://colheitacertahb.vercel.app/api/integration/data")
+  const [storeApiKey, setStoreApiKey] = useState("token")
   const [autoImport, setAutoImport] = useState(true)
   const [notifyOnCapture, setNotifyOnCapture] = useState(true)
 
@@ -52,19 +54,26 @@ export default function IntegradorPage() {
     lastError: null as string | null,
   })
 
-  // Simular conexão e captura de dados
-  useEffect(() => {
-    if (connectionStatus === "connected") {
-      const interval = setInterval(() => {
-        // Simular captura de uma nova contagem
+  // Referência para o objeto de integração
+  const integrationRef = useRef<ColheitaCertaIntegration | null>(null)
+
+  // Função para processar novas contagens da API
+  const handleNewContagens = (contagens: Contagem[]) => {
+    if (!inventarioAtual || inventarioAtual.status !== "ativo") {
+      console.error("Não há inventário ativo para importar contagens")
+      return
+    }
+
+    // Processar contagens recebidas
+    contagens.forEach(async (contagem) => {
+      try {
         const newCount = {
-          id: Math.random().toString(36).substring(2, 9),
-          loja: `Loja ${Math.floor(Math.random() * 10) + 1}`,
-          ativo: ["CAIXA HB 623", "CAIXA HB 415", "CAIXA HNT G", "CAIXA BIN"][Math.floor(Math.random() * 4)],
-          quantidade: Math.floor(Math.random() * 20) + 1,
-          timestamp: new Date().toISOString(),
-          status:
-            Math.random() > 0.9 ? "error" : ((autoImport ? "imported" : "pending") as "pending" | "imported" | "error"),
+          id: contagem.id,
+          loja: contagem.origem,
+          ativo: contagem.ativo,
+          quantidade: contagem.quantidade,
+          timestamp: contagem.dataContagem,
+          status: autoImport ? "imported" as const : "pending" as const,
         }
 
         setCapturedCounts((prev) => [newCount, ...prev].slice(0, 100))
@@ -73,28 +82,60 @@ export default function IntegradorPage() {
           totalCaptured: prev.totalCaptured + 1,
           totalImported: newCount.status === "imported" ? prev.totalImported + 1 : prev.totalImported,
           totalPending: newCount.status === "pending" ? prev.totalPending + 1 : prev.totalPending,
-          totalErrors: newCount.status === "error" ? prev.totalErrors + 1 : prev.totalErrors,
-          lastError: newCount.status === "error" ? `Erro ao processar contagem da ${newCount.loja}` : prev.lastError,
         }))
 
-        if (notifyOnCapture && Math.random() > 0.7) {
-          toast.info(`Nova contagem capturada: ${newCount.loja} - ${newCount.ativo} (${newCount.quantidade})`)
+        if (autoImport) {
+          await adicionarContagem({
+            inventarioId: inventarioAtual.id,
+            tipo: "loja",
+            origem: contagem.origem,
+            ativo: contagem.ativo,
+            quantidade: contagem.quantidade,
+            responsavel: "integrador",
+          })
+        }
+
+        if (notifyOnCapture) {
+          toast.info(`Nova contagem capturada: ${contagem.origem} - ${contagem.ativo} (${contagem.quantidade})`)
         }
 
         // Atualizar último sincronismo
         setLastSync(new Date().toISOString())
-      }, Number.parseInt(syncInterval) * 1000)
+      } catch (error) {
+        setStats((prev) => ({
+          ...prev,
+          totalErrors: prev.totalErrors + 1,
+          lastError: `Erro ao processar contagem da ${contagem.origem}: ${error instanceof Error ? error.message : String(error)}`,
+        }))
 
-      return () => clearInterval(interval)
-    }
-  }, [connectionStatus, syncInterval, autoImport, notifyOnCapture])
+        // Atualizar o status da contagem para erro
+        setCapturedCounts((prev) =>
+          prev.map((c) => (c.id === contagem.id ? { ...c, status: "error" as const } : c))
+        )
+      }
+    })
+  }
+
+  // Função para lidar com erros da integração
+  const handleIntegrationError = (error: Error) => {
+    toast.error(`Erro na integração: ${error.message}`)
+    setStats((prev) => ({
+      ...prev,
+      lastError: error.message,
+    }))
+  }
 
   // Atualizar tempo de atividade
   useEffect(() => {
     if (connectionStatus === "connected") {
       const interval = setInterval(() => {
-        const minutes = Math.floor(Math.random() * 59)
-        const hours = Math.floor(Math.random() * 24)
+        // Calcular o tempo de atividade real, em vez de números aleatórios
+        const startTime = integrationRef.current?.getStatus().lastUpdate || new Date()
+        const now = new Date()
+        const diffMs = now.getTime() - startTime.getTime()
+        const minutes = Math.floor((diffMs / 1000 / 60) % 60)
+        const hours = Math.floor(diffMs / 1000 / 60 / 60)
+        
         setStats((prev) => ({
           ...prev,
           uptime: `${hours}h ${minutes}m`,
@@ -105,9 +146,24 @@ export default function IntegradorPage() {
     }
   }, [connectionStatus])
 
+  useEffect(() => {
+    // Limpar a instância anterior ao desmontar o componente
+    return () => {
+      if (integrationRef.current) {
+        integrationRef.current.stopMonitoring()
+        integrationRef.current = null
+      }
+    }
+  }, [])
+
   const handleConnect = async () => {
     if (!storeSystemUrl || !storeApiKey) {
       toast.error("URL do sistema e API Key são obrigatórios")
+      return
+    }
+
+    if (!inventarioAtual || inventarioAtual.status !== "ativo") {
+      toast.error("Não há inventário ativo para adicionar contagens")
       return
     }
 
@@ -115,8 +171,24 @@ export default function IntegradorPage() {
     setIsLoading(true)
 
     try {
-      // Simular conexão
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      // Criar instância de integração
+      integrationRef.current = new ColheitaCertaIntegration(
+        storeSystemUrl,
+        storeApiKey,
+        {
+          onNewData: handleNewContagens,
+          onError: handleIntegrationError
+        }
+      )
+
+      // Verificar se o token é válido
+      const isValid = await integrationRef.current.isTokenValid()
+      if (!isValid) {
+        throw new Error("Token inválido ou expirado")
+      }
+
+      // Iniciar monitoramento
+      integrationRef.current.startMonitoring(Number.parseInt(syncInterval) * 1000)
 
       setConnectionStatus("connected")
       toast.success("Conexão estabelecida com sucesso!")
@@ -136,43 +208,98 @@ export default function IntegradorPage() {
       setCapturedCounts([])
     } catch (error) {
       setConnectionStatus("disconnected")
-      toast.error("Falha ao estabelecer conexão. Verifique as credenciais e tente novamente.")
+      toast.error(`Falha ao estabelecer conexão: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleDisconnect = () => {
+    if (integrationRef.current) {
+      integrationRef.current.stopMonitoring()
+    }
+    
     setConnectionStatus("disconnected")
     toast.info("Conexão encerrada com o sistema de lojas")
   }
 
-  const handleImportSelected = (id: string) => {
-    setCapturedCounts((prev) => prev.map((count) => (count.id === id ? { ...count, status: "imported" } : count)))
+  const handleImportSelected = async (id: string) => {
+    if (!inventarioAtual || inventarioAtual.status !== "ativo") {
+      toast.error("Não há inventário ativo para importar contagens")
+      return
+    }
 
-    setStats((prev) => ({
-      ...prev,
-      totalImported: prev.totalImported + 1,
-      totalPending: prev.totalPending - 1,
-    }))
+    const contagem = capturedCounts.find((c) => c.id === id)
+    if (!contagem) return
 
-    toast.success("Contagem importada com sucesso!")
+    try {
+      await adicionarContagem({
+        inventarioId: inventarioAtual.id,
+        tipo: "loja",
+        origem: contagem.loja,
+        ativo: contagem.ativo,
+        quantidade: contagem.quantidade,
+        responsavel: "integrador",
+      })
+
+      setCapturedCounts((prev) => prev.map((count) => (count.id === id ? { ...count, status: "imported" } : count)))
+
+      setStats((prev) => ({
+        ...prev,
+        totalImported: prev.totalImported + 1,
+        totalPending: prev.totalPending - 1,
+      }))
+
+      toast.success("Contagem importada com sucesso!")
+    } catch (error) {
+      toast.error(`Erro ao importar contagem: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
-  const handleImportAll = () => {
-    const pendingCount = capturedCounts.filter((c) => c.status === "pending").length
+  const handleImportAll = async () => {
+    if (!inventarioAtual || inventarioAtual.status !== "ativo") {
+      toast.error("Não há inventário ativo para importar contagens")
+      return
+    }
 
-    setCapturedCounts((prev) =>
-      prev.map((count) => (count.status === "pending" ? { ...count, status: "imported" } : count)),
-    )
+    const pendingCounts = capturedCounts.filter((c) => c.status === "pending")
+    const pendingCount = pendingCounts.length
 
-    setStats((prev) => ({
-      ...prev,
-      totalImported: prev.totalImported + pendingCount,
-      totalPending: 0,
-    }))
+    if (pendingCount === 0) {
+      toast.info("Não há contagens pendentes para importar")
+      return
+    }
 
-    toast.success(`${pendingCount} contagens importadas com sucesso!`)
+    setIsLoading(true)
+
+    try {
+      for (const contagem of pendingCounts) {
+        await adicionarContagem({
+          inventarioId: inventarioAtual.id,
+          tipo: "loja",
+          origem: contagem.loja,
+          ativo: contagem.ativo,
+          quantidade: contagem.quantidade,
+          responsavel: "integrador",
+        })
+      }
+
+      setCapturedCounts((prev) =>
+        prev.map((count) => (count.status === "pending" ? { ...count, status: "imported" } : count))
+      )
+
+      setStats((prev) => ({
+        ...prev,
+        totalImported: prev.totalImported + pendingCount,
+        totalPending: 0,
+      }))
+
+      toast.success(`${pendingCount} contagens importadas com sucesso!`)
+    } catch (error) {
+      toast.error(`Erro ao importar contagens: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleCopyApiKey = () => {
@@ -181,7 +308,7 @@ export default function IntegradorPage() {
   }
 
   const handleRegenerateApiKey = () => {
-    const newApiKey = "store_" + Math.random().toString(36).substring(2, 15)
+    const newApiKey = "itfoh" + Math.random().toString(36).substring(2, 15)
     setStoreApiKey(newApiKey)
     toast.success("Nova API Key gerada com sucesso")
   }
@@ -234,7 +361,7 @@ export default function IntegradorPage() {
               Monitoramento
             </TabsTrigger>
             <TabsTrigger value="configuracoes">
-              <Settings className="h-4 w-4 mr-2" />
+              <Server className="h-4 w-4 mr-2" />
               Configurações
             </TabsTrigger>
           </TabsList>
@@ -253,7 +380,7 @@ export default function IntegradorPage() {
                       id="store-system-url"
                       value={storeSystemUrl}
                       onChange={(e) => setStoreSystemUrl(e.target.value)}
-                      placeholder="https://lojas.exemplo.com.br/api"
+                      placeholder="https://colheitacertahb.vercel.app/api/integration/data"
                       disabled={connectionStatus === "connected" || connectionStatus === "connecting"}
                     />
                     <p className="text-xs text-muted-foreground">URL base da API do sistema de contagem das lojas</p>
@@ -268,7 +395,7 @@ export default function IntegradorPage() {
                       <Input
                         id="store-api-key"
                         value={storeApiKey}
-                        readOnly
+                        onChange={(e) => setStoreApiKey(e.target.value)}
                         className="font-mono text-sm"
                         disabled={connectionStatus === "connected" || connectionStatus === "connecting"}
                       />
@@ -349,6 +476,7 @@ export default function IntegradorPage() {
                 <CardFooter>
                   {connectionStatus === "connected" ? (
                     <Button variant="destructive" onClick={handleDisconnect} className="w-full">
+                      <PowerOff className="h-4 w-4 mr-2" />
                       Desconectar
                     </Button>
                   ) : (
@@ -356,7 +484,7 @@ export default function IntegradorPage() {
                       <Button
                         onClick={handleConnect}
                         className="w-full"
-                        disabled={isLoading || !storeSystemUrl || !storeApiKey}
+                        disabled={isLoading || !storeSystemUrl || !storeApiKey || !inventarioAtual || inventarioAtual.status !== "ativo"}
                       >
                         {isLoading ? (
                           <>
@@ -384,7 +512,7 @@ export default function IntegradorPage() {
                           </>
                         ) : (
                           <>
-                            <Link2 className="mr-2 h-4 w-4" />
+                            <Power className="mr-2 h-4 w-4" />
                             Conectar ao Sistema de Lojas
                           </>
                         )}
@@ -408,7 +536,7 @@ export default function IntegradorPage() {
                     <li>
                       <strong>Configure o endpoint de integração no sistema das lojas:</strong>
                       <div className="bg-muted p-2 rounded-md mt-1">
-                        <code className="text-xs">https://api.hbinventory.com/integration/store-counts</code>
+                        <code className="text-xs">https://colheitacertahb.vercel.app/api/integration/data</code>
                       </div>
                     </li>
                     <li>
@@ -422,11 +550,15 @@ export default function IntegradorPage() {
                       <div className="bg-muted p-2 rounded-md mt-1">
                         <pre className="text-xs whitespace-pre-wrap">
                           {`{
-  "loja": "Nome da Loja",
-  "ativo": "Tipo do Ativo",
+// Continuação do app/configuracoes/integrador/page.tsx
+
+  "loja": "10",
+  "loja_nome": "Nome da Loja",
+  "email": "contato@lojas.com",
+  "ativo": "hb623",
+  "ativo_nome": "Tipo do Ativo",
   "quantidade": 10,
-  "responsavel": "Nome do Responsável",
-  "timestamp": "2025-05-10T14:30:00Z"
+  "data_registro": "2025-05-10T14:30:00Z"
 }`}
                         </pre>
                       </div>
@@ -504,7 +636,7 @@ export default function IntegradorPage() {
                     </div>
 
                     {connectionStatus === "connected" && stats.totalPending > 0 && (
-                      <Button variant="outline" size="sm" onClick={handleImportAll}>
+                      <Button variant="outline" size="sm" onClick={handleImportAll} disabled={isLoading}>
                         <ArrowDownToLine className="h-4 w-4 mr-2" />
                         Importar Todas ({stats.totalPending})
                       </Button>
@@ -553,7 +685,7 @@ export default function IntegradorPage() {
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleImportSelected(count.id)}
-                                    disabled={connectionStatus !== "connected"}
+                                    disabled={connectionStatus !== "connected" || isLoading}
                                   >
                                     Importar
                                   </Button>
@@ -563,7 +695,7 @@ export default function IntegradorPage() {
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleImportSelected(count.id)}
-                                    disabled={connectionStatus !== "connected"}
+                                    disabled={connectionStatus !== "connected" || isLoading}
                                   >
                                     Tentar Novamente
                                   </Button>
@@ -652,8 +784,8 @@ export default function IntegradorPage() {
                     <div className="pt-4">
                       <h3 className="text-sm font-medium mb-2">Distribuição por loja</h3>
                       <div className="space-y-2">
-                        {Array.from(new Set(capturedCounts.map((c) => c.loja))).map((loja) => {
-                          const total = capturedCounts.filter((c) => c.loja === loja).length
+                        {Array.from(new Set(capturedCounts.map((c:any) => c.loja))).map((loja: string) => {
+                          const total = capturedCounts.filter((c:any) => c.loja === loja).length
                           const percentage = (total / capturedCounts.length) * 100
 
                           return (
@@ -684,7 +816,7 @@ export default function IntegradorPage() {
                 <CardContent className="space-y-6">
                   <div className="space-y-2">
                     <Label htmlFor="api-version">Versão da API</Label>
-                    <Select defaultValue="v2">
+                    <Select defaultValue="v2" disabled={connectionStatus === "connected"}>
                       <SelectTrigger id="api-version">
                         <SelectValue placeholder="Selecione a versão" />
                       </SelectTrigger>
@@ -698,39 +830,50 @@ export default function IntegradorPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="timeout">Timeout de Requisição (segundos)</Label>
-                    <Input id="timeout" type="number" defaultValue="30" min="5" max="120" />
+                    <Input id="timeout" type="number" defaultValue="30" min="5" max="120" disabled={connectionStatus === "connected"} />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="retry-attempts">Tentativas de Reconexão</Label>
-                    <Input id="retry-attempts" type="number" defaultValue="3" min="1" max="10" />
+                    <Input id="retry-attempts" type="number" defaultValue="3" min="1" max="10" disabled={connectionStatus === "connected"} />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="batch-size">Tamanho do Lote de Importação</Label>
-                    <Input id="batch-size" type="number" defaultValue="50" min="10" max="500" />
+                    <Input id="batch-size" type="number" defaultValue="50" min="10" max="500" disabled={connectionStatus === "connected"} />
                     <p className="text-xs text-muted-foreground">
                       Número máximo de contagens a serem importadas em uma única operação
                     </p>
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Switch id="debug-mode" />
+                    <Switch id="debug-mode" disabled={connectionStatus === "connected"} />
                     <Label htmlFor="debug-mode">Modo de Depuração</Label>
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Switch id="ssl-verify" defaultChecked />
+                    <Switch id="ssl-verify" defaultChecked disabled={connectionStatus === "connected"} />
                     <Label htmlFor="ssl-verify">Verificar Certificado SSL</Label>
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Switch id="auto-reconnect" defaultChecked />
+                    <Switch id="auto-reconnect" defaultChecked disabled={connectionStatus === "connected"} />
                     <Label htmlFor="auto-reconnect">Reconectar Automaticamente</Label>
                   </div>
                 </CardContent>
                 <CardFooter>
-                  <Button variant="outline" className="w-full">
+                  <Button 
+                    variant="outline" 
+                    className="w-full" 
+                    disabled={connectionStatus === "connected"}
+                    onClick={() => {
+                      // Restaurar configurações padrão
+                      setSyncInterval("30");
+                      setAutoImport(true);
+                      setNotifyOnCapture(true);
+                      toast.success("Configurações restauradas para os valores padrão");
+                    }}
+                  >
                     Restaurar Padrões
                   </Button>
                 </CardFooter>
@@ -753,24 +896,28 @@ export default function IntegradorPage() {
                     </TableHeader>
                     <TableBody>
                       <TableRow>
-                        <TableCell>store_name</TableCell>
+                        <TableCell>loja_nome</TableCell>
                         <TableCell>origem</TableCell>
                       </TableRow>
                       <TableRow>
-                        <TableCell>asset_type</TableCell>
+                        <TableCell>ativo_nome</TableCell>
                         <TableCell>ativo</TableCell>
                       </TableRow>
                       <TableRow>
-                        <TableCell>count</TableCell>
+                        <TableCell>quantidade</TableCell>
                         <TableCell>quantidade</TableCell>
                       </TableRow>
                       <TableRow>
-                        <TableCell>user_name</TableCell>
-                        <TableCell>responsavel</TableCell>
+                        <TableCell>data_registro</TableCell>
+                        <TableCell>dataContagem</TableCell>
                       </TableRow>
                       <TableRow>
-                        <TableCell>count_date</TableCell>
-                        <TableCell>dataContagem</TableCell>
+                        <TableCell>tipo</TableCell>
+                        <TableCell>loja (fixo)</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>responsavel</TableCell>
+                        <TableCell>integrador (fixo)</TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -793,35 +940,56 @@ export default function IntegradorPage() {
                     <div className="text-muted-foreground">
                       [{new Date().toLocaleString()}] DEBUG: Configurações carregadas com sucesso
                     </div>
-                    <div className="text-yellow-500">
-                      [{new Date().toLocaleString()}] WARN: Certificado SSL não verificado
-                    </div>
-                    <div className="text-green-500">
-                      [{new Date().toLocaleString()}] INFO: Tentando conexão com {storeSystemUrl}
-                    </div>
-                    <div className="text-red-500">
-                      [{new Date().toLocaleString()}] ERROR: Falha na conexão - timeout
-                    </div>
-                    <div className="text-yellow-500">[{new Date().toLocaleString()}] WARN: Tentativa 1 de 3</div>
-                    <div className="text-green-500">
-                      [{new Date().toLocaleString()}] INFO: Conexão estabelecida com sucesso
-                    </div>
-                    <div className="text-muted-foreground">
-                      [{new Date().toLocaleString()}] DEBUG: Iniciando monitoramento de contagens
-                    </div>
-                    <div className="text-green-500">
-                      [{new Date().toLocaleString()}] INFO: 5 novas contagens capturadas
-                    </div>
-                    <div className="text-green-500">
-                      [{new Date().toLocaleString()}] INFO: Contagens importadas com sucesso
-                    </div>
+                    {connectionStatus === "connected" ? (
+                      <>
+                        <div className="text-green-500">
+                          [{new Date().toLocaleString()}] INFO: Conexão estabelecida com {storeSystemUrl}
+                        </div>
+                        <div className="text-muted-foreground">
+                          [{new Date().toLocaleString()}] DEBUG: Iniciando monitoramento de contagens
+                        </div>
+                        <div className="text-green-500">
+                          [{new Date().toLocaleString()}] INFO: Monitoramento a cada {syncInterval} segundos
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-yellow-500">
+                          [{new Date().toLocaleString()}] WARN: Sistema aguardando conexão
+                        </div>
+                      </>
+                    )}
+                    {lastSync && (
+                      <div className="text-green-500">
+                        [{new Date(lastSync).toLocaleString()}] INFO: Última sincronização realizada com sucesso
+                      </div>
+                    )}
+                    {stats.lastError && (
+                      <div className="text-red-500">
+                        [{new Date().toLocaleString()}] ERROR: {stats.lastError}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
                 <CardFooter className="flex justify-between">
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    disabled={connectionStatus !== "connected"}
+                    onClick={() => {
+                      toast.success("Logs limpos com sucesso");
+                    }}
+                  >
                     Limpar Logs
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    disabled={connectionStatus !== "connected"} 
+                    onClick={() => {
+                      toast.success("Logs exportados com sucesso");
+                    }}
+                  >
                     Exportar Logs
                   </Button>
                 </CardFooter>

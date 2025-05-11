@@ -3,7 +3,12 @@ import { persist } from "zustand/middleware"
 import type { Inventario, Contagem, DadosTransito } from "./types"
 
 
-
+type ContagemChangeEvent = {
+  tipo: "loja" | "setor" | "fornecedor";
+  origem: string;
+  ativo: string;
+  quantidade: number;
+}
 
 
 interface InventarioStore {
@@ -14,6 +19,11 @@ interface InventarioStore {
   dadosTransito: DadosTransito[]
   isLoading: boolean
   error: string | null
+
+
+  contagemChangeListeners: ((event: ContagemChangeEvent) => void)[]
+  addContagemChangeListener: (listener: (event: ContagemChangeEvent) => void) => void
+  removeContagemChangeListener: (listener: (event: ContagemChangeEvent) => void) => void
 
   // Carregar dados iniciais
   carregarInventarioAtivo: () => Promise<void>
@@ -48,6 +58,8 @@ interface InventarioStore {
   }
 }
 
+
+
 export const useInventarioStore = create<InventarioStore>()(
   persist(
     (set, get) => ({
@@ -57,6 +69,22 @@ export const useInventarioStore = create<InventarioStore>()(
       dadosTransito: [],
       isLoading: false,
       error: null,
+
+
+      contagemChangeListeners: [],
+
+
+      addContagemChangeListener: (listener) => {
+        set((state) => ({
+          contagemChangeListeners: [...state.contagemChangeListeners, listener]
+        }));
+      },
+      
+      removeContagemChangeListener: (listener) => {
+        set((state) => ({
+          contagemChangeListeners: state.contagemChangeListeners.filter(l => l !== listener)
+        }));
+      },
 
       carregarInventarioAtivo: async () => {
         set({ isLoading: true, error: null });
@@ -293,6 +321,21 @@ export const useInventarioStore = create<InventarioStore>()(
           set((state) => ({
             contagens: [...state.contagens, novaContagem],
           }));
+
+          const event: ContagemChangeEvent = {
+            tipo: dados.tipo,
+            origem: dados.origem,
+            ativo: dados.ativo,
+            quantidade: dados.quantidade
+          };
+
+          get().contagemChangeListeners.forEach(listener => {
+            try {
+              listener(event);
+            } catch (e) {
+              console.error("Erro ao notificar listener:", e);
+            }
+          });
           
           if (inventarioAtual) {
               await get().atualizarProgressoInventario(inventarioAtual.id);
@@ -556,9 +599,10 @@ export const useInventarioStore = create<InventarioStore>()(
     {
       name: "hb-inventory-storage",
       // Não persistir alguns campos que são carregados da API
-      partialize: (state) => ({
-        dadosTransito: state.dadosTransito,
-      }),
+      partialize: (state) => {
+        const { contagemChangeListeners, ...rest } = state;
+        return rest;
+      },
     }
   )
 )

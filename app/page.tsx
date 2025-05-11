@@ -1,6 +1,8 @@
+// app/page.tsx (modificado para atualização dinâmica)
+
 "use client"
 
-import { useState , useEffect} from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useInventarioStore } from "@/lib/store"
 import { toast } from "sonner"
 import { motion } from "framer-motion"
@@ -24,29 +26,66 @@ export default function Home() {
     carregarContagens,
     carregarDadosTransito,
     inventarios,
-    isLoading 
+    isLoading,
+    addContagemChangeListener,
+    removeContagemChangeListener 
   } = useInventarioStore()
   
   const [novoInventarioDialogOpen, setNovoInventarioDialogOpen] = useState(false)
   const [carregarInventarioDialogOpen, setCarregarInventarioDialogOpen] = useState(false)
+  // Estado local para estatísticas e atualização dinâmica
+  const [estatisticasLocais, setEstatisticasLocais] = useState(getEstatisticas())
+  // Estado para forçar re-renderização
+  const [updateCounter, setUpdateCounter] = useState(0)
 
-useEffect(() => {
-  const carregarDados = async () => {
-    await carregarInventarioAtivo();
-    await carregarInventarios();
+  // Carregar dados iniciais
+  useEffect(() => {
+    const carregarDados = async () => {
+      await carregarInventarioAtivo();
+      await carregarInventarios();
+      
+      if (inventarioAtual) {
+        await Promise.all([
+          carregarContagens(inventarioAtual.id),
+          carregarDadosTransito(inventarioAtual.id)
+        ]);
+      }
+      
+      // Atualizar estatísticas locais após carregar os dados
+      setEstatisticasLocais(getEstatisticas());
+    };
     
-    if (inventarioAtual) {
-      await Promise.all([
-        carregarContagens(inventarioAtual.id),
-        carregarDadosTransito(inventarioAtual.id)
-      ]);
-    }
-  };
-  
-  carregarDados();
-}, [carregarInventarioAtivo, carregarInventarios, carregarContagens, carregarDadosTransito]);
+    carregarDados();
+  }, [carregarInventarioAtivo, carregarInventarios, carregarContagens, carregarDadosTransito, inventarioAtual]);
 
-  const estatisticas = getEstatisticas()
+  // Callback para lidar com mudanças nas contagens
+  const handleContagemChange = useCallback(() => {
+    // Atualizar estatísticas locais
+    setEstatisticasLocais(getEstatisticas());
+    // Incrementar contador para forçar re-renderização
+    setUpdateCounter(c => c + 1);
+  }, [getEstatisticas]);
+
+  // Registrar e limpar o listener para mudanças de contagens
+  useEffect(() => {
+    // Registrar o listener
+    addContagemChangeListener(handleContagemChange);
+    
+    // Limpar o listener ao desmontar
+    return () => {
+      removeContagemChangeListener(handleContagemChange);
+    };
+  }, [addContagemChangeListener, removeContagemChangeListener, handleContagemChange]);
+
+  // Atualizar periodicamente as estatísticas (como backup para garantir a atualização)
+  useEffect(() => {
+    // Atualizar a cada 5 segundos como fallback
+    const intervalId = setInterval(() => {
+      setEstatisticasLocais(getEstatisticas());
+    }, 5000);
+    
+    return () => clearInterval(intervalId);
+  }, [getEstatisticas]);
 
   const handleFinalizarInventario = async () => {
     if (!inventarioAtual) {
@@ -145,12 +184,13 @@ useEffect(() => {
           initial="hidden"
           animate="visible"
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          key={`stats-${updateCounter}`} // Forçar re-renderização quando os dados mudarem
         >
           <AnimatedCard title="Total de Lojas que já Contaram" delay={0.1}>
             <div className="flex items-center justify-center h-full">
-              <ProgressRing progress={estatisticas.progresso.lojas}>
+              <ProgressRing progress={estatisticasLocais.progresso.lojas}>
                 <div className="text-center">
-                  <span className="text-3xl font-bold">{estatisticas.totalLojasContadas}</span>
+                  <span className="text-3xl font-bold">{estatisticasLocais.totalLojasContadas}</span>
                   <p className="text-xs text-muted-foreground">de {Object.values(lojas).flat().length}</p>
                 </div>
               </ProgressRing>
@@ -159,9 +199,9 @@ useEffect(() => {
 
           <AnimatedCard title="Total de Setores do CD que já Contaram" delay={0.2}>
             <div className="flex items-center justify-center h-full">
-              <ProgressRing progress={estatisticas.progresso.setores}>
+              <ProgressRing progress={estatisticasLocais.progresso.setores}>
                 <div className="text-center">
-                  <span className="text-3xl font-bold">{estatisticas.totalSetoresContados}</span>
+                  <span className="text-3xl font-bold">{estatisticasLocais.totalSetoresContados}</span>
                   <p className="text-xs text-muted-foreground">de {setoresCD.length}</p>
                 </div>
               </ProgressRing>
@@ -170,11 +210,11 @@ useEffect(() => {
 
           <AnimatedCard title="Lojas Pendentes" delay={0.3} className="lg:col-span-1">
             <ScrollArea className="h-[180px] pr-4">
-              {Object.keys(estatisticas.lojasPendentes).length === 0 ? (
+              {Object.keys(estatisticasLocais.lojasPendentes).length === 0 ? (
                 <p className="text-center text-muted-foreground py-4">Todas as lojas já realizaram a contagem!</p>
               ) : (
                 <div className="space-y-4">
-                  {Object.entries(estatisticas.lojasPendentes).map(([regional, lojas]) => (
+                  {Object.entries(estatisticasLocais.lojasPendentes).map(([regional, lojas]) => (
                     <div key={regional}>
                       <h3 className="font-medium mb-2">{regional}:</h3>
                       <ul className="space-y-1 pl-4">
