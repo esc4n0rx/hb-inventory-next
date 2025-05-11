@@ -23,6 +23,7 @@ import { Contagem } from "@/lib/types"
 
 export default function IntegradorPage() {
   const { inventarioAtual, adicionarContagem } = useInventarioStore()
+  const [realIntegratorStatus, setRealIntegratorStatus] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState("conexao")
   const [apiKey, setApiKey] = useState("hb_inv_" + Math.random().toString(36).substring(2, 15))
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "disconnected" | "connecting">("disconnected")
@@ -124,6 +125,38 @@ export default function IntegradorPage() {
       lastError: error.message,
     }))
   }
+
+  useEffect(() => {
+    // Verificar o status real do integrador
+    const checkIntegratorStatus = async () => {
+      try {
+        // Verificar status no banco de dados
+        const response = await fetch('/api/config/integrador');
+        if (response.ok) {
+          const config = await response.json();
+          setRealIntegratorStatus(config.ativo);
+          
+          // Definir o estado local com base no status real
+          if (config.ativo) {
+            setConnectionStatus("connected");
+            setStoreSystemUrl(config.apiUrl);
+            setStoreApiKey(config.apiKey);
+            setSyncInterval(String(config.syncInterval));
+            setAutoImport(config.autoImport);
+            setNotifyOnCapture(config.notifyOnCapture);
+            setLastSync(config.lastSync);
+          } else {
+            setConnectionStatus("disconnected");
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao verificar status do integrador:", error);
+        setConnectionStatus("disconnected");
+      }
+    };
+    
+    checkIntegratorStatus();
+  }, []);
   
 
   // Atualizar tempo de atividade
@@ -185,16 +218,18 @@ export default function IntegradorPage() {
       throw new Error("Token inválido ou expirado")
     }
 
-    // Ativar o integrador no store global - isso agora também salva no banco de dados
-    await useInventarioStore.getState().ativarIntegrador({
-      apiUrl: storeSystemUrl,
-      apiKey: storeApiKey,
-      syncInterval: Number.parseInt(syncInterval),
-      autoImport,
-      notifyOnCapture
-    })
+      await useInventarioStore.getState().ativarIntegrador({
+        apiUrl: storeSystemUrl,
+        apiKey: storeApiKey,
+        syncInterval: Number.parseInt(syncInterval),
+        autoImport,
+        notifyOnCapture
+      });
+      
+      // Atualizar estado local
+      setRealIntegratorStatus(true);
+      setConnectionStatus("connected");
 
-    setConnectionStatus("connected")
     toast.success("Conexão estabelecida com sucesso!")
     setLastSync(new Date().toISOString())
 
@@ -219,15 +254,15 @@ export default function IntegradorPage() {
 }
 
   const handleDisconnect = async () => {
-  // Desativar no store global - isso agora também salva no banco de dados
-  try {
-    await useInventarioStore.getState().desativarIntegrador()
-    setConnectionStatus("disconnected")
-    toast.info("Conexão encerrada com o sistema de lojas")
-  } catch (error) {
-    toast.error(`Erro ao desconectar: ${error instanceof Error ? error.message : String(error)}`)
-  }
-}
+    try {
+      await useInventarioStore.getState().desativarIntegrador();
+      setRealIntegratorStatus(false);
+      setConnectionStatus("disconnected");
+      toast.info("Conexão encerrada com o sistema de lojas");
+    } catch (error) {
+      toast.error(`Erro ao desconectar: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
 
   const handleImportSelected = async (id: string) => {
     if (!inventarioAtual || inventarioAtual.status !== "ativo") {

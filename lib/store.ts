@@ -154,6 +154,8 @@ export const useInventarioStore = create<InventarioStore>()(
             throw new Error('Falha ao salvar configuração do integrador');
           }
           
+          console.log("Configuração salva no banco com sucesso:", completeConfig);
+          
           // Depois atualizar o estado local
           set({
             integradorAtivo: true,
@@ -172,7 +174,6 @@ export const useInventarioStore = create<InventarioStore>()(
         }
       },
 
-      // Modificar a função desativarIntegrador
       desativarIntegrador: async () => {
         const config = get().integradorConfig;
         const completeConfig = {
@@ -199,6 +200,8 @@ export const useInventarioStore = create<InventarioStore>()(
             throw new Error('Falha ao salvar configuração do integrador');
           }
           
+          console.log("Desativação salva no banco com sucesso");
+          
           // Depois atualizar o estado local
           set({ integradorAtivo: false });
         } catch (error) {
@@ -206,7 +209,6 @@ export const useInventarioStore = create<InventarioStore>()(
           throw error;
         }
       },
-
       atualizarUltimoSync: async (timestamp) => {
         const config = get().integradorConfig;
         const integradorAtivo = get().integradorAtivo;
