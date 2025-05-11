@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
+import { integradorService } from "@/lib/integrador-service";
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -13,6 +14,10 @@ export const metadata: Metadata = {
   title: "HB Inventory",
   description: "Sistema de gerenciamento e controle de inventário de ativos",
     generator: 'v0.dev'
+}
+
+if (typeof window !== 'undefined') {
+  integradorService.initialize();
 }
 
 export default function RootLayout({

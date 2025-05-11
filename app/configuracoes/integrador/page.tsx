@@ -124,6 +124,7 @@ export default function IntegradorPage() {
       lastError: error.message,
     }))
   }
+  
 
   // Atualizar tempo de atividade
   useEffect(() => {
@@ -135,6 +136,8 @@ export default function IntegradorPage() {
         const diffMs = now.getTime() - startTime.getTime()
         const minutes = Math.floor((diffMs / 1000 / 60) % 60)
         const hours = Math.floor(diffMs / 1000 / 60 / 60)
+
+        setConnectionStatus("connected")
         
         setStats((prev) => ({
           ...prev,
@@ -156,7 +159,7 @@ export default function IntegradorPage() {
     }
   }, [])
 
-  const handleConnect = async () => {
+    const handleConnect = async () => {
     if (!storeSystemUrl || !storeApiKey) {
       toast.error("URL do sistema e API Key são obrigatórios")
       return
@@ -171,24 +174,25 @@ export default function IntegradorPage() {
     setIsLoading(true)
 
     try {
-      // Criar instância de integração
-      integrationRef.current = new ColheitaCertaIntegration(
+      // Verificar se o token é válido antes de ativar
+      const integration = new ColheitaCertaIntegration(
         storeSystemUrl,
-        storeApiKey,
-        {
-          onNewData: handleNewContagens,
-          onError: handleIntegrationError
-        }
+        storeApiKey
       )
 
-      // Verificar se o token é válido
-      const isValid = await integrationRef.current.isTokenValid()
+      const isValid = await integration.isTokenValid()
       if (!isValid) {
         throw new Error("Token inválido ou expirado")
       }
 
-      // Iniciar monitoramento
-      integrationRef.current.startMonitoring(Number.parseInt(syncInterval) * 1000)
+      // Ativar o integrador no store global
+      useInventarioStore.getState().ativarIntegrador({
+        apiUrl: storeSystemUrl,
+        apiKey: storeApiKey,
+        syncInterval: Number.parseInt(syncInterval),
+        autoImport,
+        notifyOnCapture
+      })
 
       setConnectionStatus("connected")
       toast.success("Conexão estabelecida com sucesso!")
@@ -215,9 +219,8 @@ export default function IntegradorPage() {
   }
 
   const handleDisconnect = () => {
-    if (integrationRef.current) {
-      integrationRef.current.stopMonitoring()
-    }
+    // Desativar no store global
+    useInventarioStore.getState().desativarIntegrador()
     
     setConnectionStatus("disconnected")
     toast.info("Conexão encerrada com o sistema de lojas")
