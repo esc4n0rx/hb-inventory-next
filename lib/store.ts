@@ -45,6 +45,8 @@ interface InventarioStore {
   integradorConfig: IntegradorConfig;
 
   contagemChangeListeners: Array<(event: ContagemChangeEvent) => void>;
+  addContagemChangeListener: (listener: (event: ContagemChangeEvent) => void) => void
+  removeContagemChangeListener: (listener: (event: ContagemChangeEvent) => void) => void
 
   // Integrador actions
   ativarIntegrador: (config: Omit<IntegradorConfig, 'lastSync'>) => void;
@@ -97,6 +99,21 @@ export const useInventarioStore = create<InventarioStore>()(
       },
 
       contagemChangeListeners: [],
+
+
+      addContagemChangeListener: (listener) => {
+        set((state) => ({
+          contagemChangeListeners: [...state.contagemChangeListeners, listener]
+        }));
+      },
+      
+      removeContagemChangeListener: (listener) => {
+        set((state) => ({
+          contagemChangeListeners: state.contagemChangeListeners.filter(l => l !== listener)
+        }));
+      },
+
+      
 
       // Integrador actions
       ativarIntegrador: (config) => {
