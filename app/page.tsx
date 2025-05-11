@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { LojasPendentesCard } from "@/components/lojas-pendentes-card";
 
 export default function Home() {
   const { 
@@ -117,6 +118,17 @@ export default function Home() {
     },
   }
 
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: 0.5,
+      },
+    },
+  }
+
   return (
     <div className="container mx-auto p-4 md:p-6">
       <div className="flex flex-col gap-6">
@@ -207,29 +219,15 @@ export default function Home() {
               </ProgressRing>
             </div>
           </AnimatedCard>
-
-          <AnimatedCard title="Lojas Pendentes" delay={0.3} className="lg:col-span-1">
-            <ScrollArea className="h-[180px] pr-4">
-              {Object.keys(estatisticasLocais.lojasPendentes).length === 0 ? (
-                <p className="text-center text-muted-foreground py-4">Todas as lojas já realizaram a contagem!</p>
-              ) : (
-                <div className="space-y-4">
-                  {Object.entries(estatisticasLocais.lojasPendentes).map(([regional, lojas]) => (
-                    <div key={regional}>
-                      <h3 className="font-medium mb-2">{regional}:</h3>
-                      <ul className="space-y-1 pl-4">
-                        {lojas.map((loja) => (
-                          <li key={loja} className="text-sm text-muted-foreground">
-                            {loja}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </AnimatedCard>
+              <motion.div
+                variants={itemVariants}
+                className="lg:col-span-1"
+              >
+                <LojasPendentesCard 
+                  lojasPendentes={estatisticasLocais.lojasPendentes} 
+                  className="h-full"
+                />
+              </motion.div>
         </motion.div>
 
         <AnimatedCard title="Comparativo de Contagens" delay={0.4}>
