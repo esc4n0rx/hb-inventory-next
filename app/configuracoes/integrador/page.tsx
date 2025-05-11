@@ -160,71 +160,74 @@ export default function IntegradorPage() {
   }, [])
 
     const handleConnect = async () => {
-    if (!storeSystemUrl || !storeApiKey) {
-      toast.error("URL do sistema e API Key são obrigatórios")
-      return
-    }
-
-    if (!inventarioAtual || inventarioAtual.status !== "ativo") {
-      toast.error("Não há inventário ativo para adicionar contagens")
-      return
-    }
-
-    setConnectionStatus("connecting")
-    setIsLoading(true)
-
-    try {
-      // Verificar se o token é válido antes de ativar
-      const integration = new ColheitaCertaIntegration(
-        storeSystemUrl,
-        storeApiKey
-      )
-
-      const isValid = await integration.isTokenValid()
-      if (!isValid) {
-        throw new Error("Token inválido ou expirado")
-      }
-
-      // Ativar o integrador no store global
-      useInventarioStore.getState().ativarIntegrador({
-        apiUrl: storeSystemUrl,
-        apiKey: storeApiKey,
-        syncInterval: Number.parseInt(syncInterval),
-        autoImport,
-        notifyOnCapture
-      })
-
-      setConnectionStatus("connected")
-      toast.success("Conexão estabelecida com sucesso!")
-      setLastSync(new Date().toISOString())
-
-      // Inicializar estatísticas
-      setStats({
-        totalCaptured: 0,
-        totalImported: 0,
-        totalPending: 0,
-        totalErrors: 0,
-        uptime: "0h 0m",
-        lastError: null,
-      })
-
-      // Limpar contagens capturadas
-      setCapturedCounts([])
-    } catch (error) {
-      setConnectionStatus("disconnected")
-      toast.error(`Falha ao estabelecer conexão: ${error instanceof Error ? error.message : String(error)}`)
-    } finally {
-      setIsLoading(false)
-    }
+  if (!storeSystemUrl || !storeApiKey) {
+    toast.error("URL do sistema e API Key são obrigatórios")
+    return
   }
 
-  const handleDisconnect = () => {
-    // Desativar no store global
-    useInventarioStore.getState().desativarIntegrador()
-    
+  if (!inventarioAtual || inventarioAtual.status !== "ativo") {
+    toast.error("Não há inventário ativo para adicionar contagens")
+    return
+  }
+
+  setConnectionStatus("connecting")
+  setIsLoading(true)
+
+  try {
+    // Verificar se o token é válido antes de ativar
+    const integration = new ColheitaCertaIntegration(
+      storeSystemUrl,
+      storeApiKey
+    )
+
+    const isValid = await integration.isTokenValid()
+    if (!isValid) {
+      throw new Error("Token inválido ou expirado")
+    }
+
+    // Ativar o integrador no store global - isso agora também salva no banco de dados
+    await useInventarioStore.getState().ativarIntegrador({
+      apiUrl: storeSystemUrl,
+      apiKey: storeApiKey,
+      syncInterval: Number.parseInt(syncInterval),
+      autoImport,
+      notifyOnCapture
+    })
+
+    setConnectionStatus("connected")
+    toast.success("Conexão estabelecida com sucesso!")
+    setLastSync(new Date().toISOString())
+
+    // Inicializar estatísticas
+    setStats({
+      totalCaptured: 0,
+      totalImported: 0,
+      totalPending: 0,
+      totalErrors: 0,
+      uptime: "0h 0m",
+      lastError: null,
+    })
+
+    // Limpar contagens capturadas
+    setCapturedCounts([])
+  } catch (error) {
+    setConnectionStatus("disconnected")
+    toast.error(`Falha ao estabelecer conexão: ${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    setIsLoading(false)
+  }
+}
+
+  const handleDisconnect = async () => {
+  // Desativar no store global - isso agora também salva no banco de dados
+  try {
+    await useInventarioStore.getState().desativarIntegrador()
     setConnectionStatus("disconnected")
     toast.info("Conexão encerrada com o sistema de lojas")
+  } catch (error) {
+    toast.error(`Erro ao desconectar: ${error instanceof Error ? error.message : String(error)}`)
   }
+}
 
   const handleImportSelected = async (id: string) => {
     if (!inventarioAtual || inventarioAtual.status !== "ativo") {

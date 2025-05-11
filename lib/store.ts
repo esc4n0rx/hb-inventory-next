@@ -48,6 +48,9 @@ interface InventarioStore {
   addContagemChangeListener: (listener: (event: ContagemChangeEvent) => void) => void
   removeContagemChangeListener: (listener: (event: ContagemChangeEvent) => void) => void
 
+
+  atualizarConfigIntegrador: (config: IntegradorConfig & { ativo: boolean }) => void;
+
   // Integrador actions
   ativarIntegrador: (config: Omit<IntegradorConfig, 'lastSync'>) => void;
   desativarIntegrador: () => void;
@@ -113,22 +116,125 @@ export const useInventarioStore = create<InventarioStore>()(
         }));
       },
 
-      
 
-      // Integrador actions
-      ativarIntegrador: (config) => {
+
+      atualizarConfigIntegrador: (config) => {
         set({
-          integradorAtivo: true,
+          integradorAtivo: config.ativo,
           integradorConfig: {
-            ...config,
-            lastSync: new Date().toISOString(),
-          },
+            apiUrl: config.apiUrl,
+            apiKey: config.apiKey,
+            syncInterval: config.syncInterval,
+            autoImport: config.autoImport,
+            notifyOnCapture: config.notifyOnCapture,
+            lastSync: config.lastSync,
+          }
         });
       },
-      desativarIntegrador: () => {
-        set({ integradorAtivo: false });
+
+      // Modificar a função ativarIntegrador existente
+      ativarIntegrador: async (config) => {
+        const completeConfig = {
+          ativo: true,
+          ...config,
+          lastSync: new Date().toISOString(),
+        };
+        
+        // Salvar no banco de dados primeiro
+        try {
+          const response = await fetch('/api/config/integrador', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(completeConfig),
+          });
+          
+          if (!response.ok) {
+            throw new Error('Falha ao salvar configuração do integrador');
+          }
+          
+          // Depois atualizar o estado local
+          set({
+            integradorAtivo: true,
+            integradorConfig: {
+              apiUrl: config.apiUrl,
+              apiKey: config.apiKey,
+              syncInterval: config.syncInterval,
+              autoImport: config.autoImport,
+              notifyOnCapture: config.notifyOnCapture,
+              lastSync: new Date().toISOString(),
+            },
+          });
+        } catch (error) {
+          console.error("Erro ao salvar configuração do integrador:", error);
+          throw error;
+        }
       },
-      atualizarUltimoSync: (timestamp) => {
+
+      // Modificar a função desativarIntegrador
+      desativarIntegrador: async () => {
+        const config = get().integradorConfig;
+        const completeConfig = {
+          ativo: false,
+          apiUrl: config.apiUrl,
+          apiKey: config.apiKey,
+          syncInterval: config.syncInterval,
+          autoImport: config.autoImport,
+          notifyOnCapture: config.notifyOnCapture,
+          lastSync: config.lastSync,
+        };
+        
+        // Salvar no banco de dados primeiro
+        try {
+          const response = await fetch('/api/config/integrador', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(completeConfig),
+          });
+          
+          if (!response.ok) {
+            throw new Error('Falha ao salvar configuração do integrador');
+          }
+          
+          // Depois atualizar o estado local
+          set({ integradorAtivo: false });
+        } catch (error) {
+          console.error("Erro ao salvar configuração do integrador:", error);
+          throw error;
+        }
+      },
+
+      atualizarUltimoSync: async (timestamp) => {
+        const config = get().integradorConfig;
+        const integradorAtivo = get().integradorAtivo;
+        
+        const completeConfig = {
+          ativo: integradorAtivo,
+          apiUrl: config.apiUrl,
+          apiKey: config.apiKey,
+          syncInterval: config.syncInterval,
+          autoImport: config.autoImport,
+          notifyOnCapture: config.notifyOnCapture,
+          lastSync: timestamp,
+        };
+        
+        // Atualizar no banco de dados
+        try {
+          await fetch('/api/config/integrador', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(completeConfig),
+          });
+        } catch (error) {
+          console.error("Erro ao atualizar último sync:", error);
+        }
+        
+        // Atualizar estado local
         set((state) => ({
           integradorConfig: {
             ...state.integradorConfig,

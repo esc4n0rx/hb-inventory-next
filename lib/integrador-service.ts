@@ -12,6 +12,9 @@ class IntegradorService {
 
   private constructor() {}
 
+
+  
+
   public static getInstance(): IntegradorService {
     if (!IntegradorService.instance) {
       IntegradorService.instance = new IntegradorService();
@@ -19,18 +22,31 @@ class IntegradorService {
     return IntegradorService.instance;
   }
 
-  public initialize(): void {
+  public async initialize(): Promise<void> {
     if (this.isInitialized) return;
     
     this.isInitialized = true;
     
-    // Verificar se há uma integração ativa
-    const store = useInventarioStore.getState();
-    if (store.integradorAtivo) {
-      this.iniciarIntegracao();
+    // Carregar configuração do integrador do banco de dados
+    try {
+      const response = await fetch('/api/config/integrador');
+      if (response.ok) {
+        const config = await response.json();
+        
+        // Atualizar o estado do store com a configuração carregada
+        const store = useInventarioStore.getState();
+        store.atualizarConfigIntegrador(config);
+        
+        // Iniciar integração se estiver ativa
+        if (config.ativo) {
+          this.iniciarIntegracao();
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao carregar configuração do integrador:", error);
     }
     
-    // Escutar mudanças no estado do integrador
+    // Monitorar mudanças no estado do integrador
     useInventarioStore.subscribe((state) => {
       const ativo = state.integradorAtivo;
       if (ativo) {
