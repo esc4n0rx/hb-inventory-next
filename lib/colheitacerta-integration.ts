@@ -59,31 +59,33 @@ export class ColheitaCertaIntegration {
    * @param since Data a partir da qual buscar contagens
    * @returns Resposta da API com contagens
    */
-  async fetchContagens(since: Date): Promise<ContagemResponse> {
-    try {
-      const url = `${this.apiBaseUrl}?desde=${since.toISOString()}`;
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erro na requisição: ${response.status} - ${response.statusText}`);
+ async fetchContagens(since: Date): Promise<ContagemResponse> {
+  try {
+    const url = `/api/proxy?desde=${since.toISOString()}&token=${this.token}`;
+    
+    // Opção 1: Usar fetch com mode: 'cors' explícito
+    const response = await fetch(url, {
+      method: 'GET',
+      mode: 'cors', // Adicione esta linha
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
       }
+    });
 
-      return await response.json() as ContagemResponse;
-    } catch (error) {
-      const errorObj = error instanceof Error ? error : new Error(String(error));
-      if (this.onError) {
-        this.onError(errorObj);
-      }
-      throw errorObj;
+    if (!response.ok) {
+      throw new Error(`Erro na requisição: ${response.status} - ${response.statusText}`);
     }
+
+    return await response.json() as ContagemResponse;
+  } catch (error) {
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    if (this.onError) {
+      this.onError(errorObj);
+    }
+    throw errorObj;
   }
+}
 
   /**
    * Processa dados recebidos da API, convertendo para o formato esperado pelo sistema
