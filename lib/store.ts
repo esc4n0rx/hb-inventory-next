@@ -142,6 +142,7 @@ export const useInventarioStore = create<InventarioStore>()(
         
         // Salvar no banco de dados primeiro
         try {
+          console.log('Iniciando salvamento da configuração do integrador:', completeConfig);
           const response = await fetch('/api/config/integrador', {
             method: 'PUT',
             headers: {
@@ -149,8 +150,11 @@ export const useInventarioStore = create<InventarioStore>()(
             },
             body: JSON.stringify(completeConfig),
           });
+
+          const responseData = await response.json();
           
           if (!response.ok) {
+            console.error('Resposta de erro da API:', responseData);
             throw new Error('Falha ao salvar configuração do integrador');
           }
           
@@ -168,6 +172,7 @@ export const useInventarioStore = create<InventarioStore>()(
               lastSync: new Date().toISOString(),
             },
           });
+          console.log('Estado local atualizado com sucesso');
         } catch (error) {
           console.error("Erro ao salvar configuração do integrador:", error);
           throw error;
