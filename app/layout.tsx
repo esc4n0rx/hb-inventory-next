@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
-import { IntegradorInitializer } from "@/components/IntegradorInitializer"
+import { IntegradorSimplesInitializer } from "@/components/IntegradorSimplesInitializer"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -37,7 +37,7 @@ export default function RootLayout({
             </div>
             <Toaster position="top-right" />
             {/* Cliente-only initializer para integrador */}
-            <IntegradorInitializer />
+            <IntegradorSimplesInitializer />
           </SidebarProvider>
         </ThemeProvider>
       </body>
