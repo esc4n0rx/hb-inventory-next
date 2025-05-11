@@ -61,12 +61,13 @@ export class ColheitaCertaIntegration {
    */
  async fetchContagens(since: Date): Promise<ContagemResponse> {
   try {
+    // Usar o endpoint de proxy que criamos no Next.js para evitar problemas de CORS
     const url = `/api/proxy?desde=${since.toISOString()}&token=${this.token}`;
     
-    // Opção 1: Usar fetch com mode: 'cors' explícito
+    console.log(`Fazendo requisição para: ${url}`);
+    
     const response = await fetch(url, {
       method: 'GET',
-      mode: 'cors', // Adicione esta linha
       headers: {
         'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json'
@@ -77,8 +78,11 @@ export class ColheitaCertaIntegration {
       throw new Error(`Erro na requisição: ${response.status} - ${response.statusText}`);
     }
 
-    return await response.json() as ContagemResponse;
+    const data = await response.json();
+    console.log(`Resposta recebida: ${data.count} contagens`);
+    return data;
   } catch (error) {
+    console.error("Erro ao buscar contagens:", error);
     const errorObj = error instanceof Error ? error : new Error(String(error));
     if (this.onError) {
       this.onError(errorObj);
@@ -109,35 +113,40 @@ export class ColheitaCertaIntegration {
    * @param response Resposta da API
    */
 private handleResponse(response: ContagemResponse): void {
-  if (response.success && response.count > 0) {
-    console.log(`[${new Date().toLocaleTimeString()}] Recebidas ${response.count} novas contagens`);
-    
-    // Processa os dados para o formato esperado pelo sistema
-    const contagensProcessadas = this.processarContagens(response.data);
-    
-    // Se houver um callback registrado, chama-o com os dados processados
-    if (this.onNewData) {
-      this.onNewData(contagensProcessadas);
+  const timestamp = new Date().toLocaleTimeString();
+  
+  if (response.success) {
+    if (response.count > 0) {
+      console.log(`[${timestamp}] Recebidas ${response.count} novas contagens`);
+      
+      // Se houver um callback registrado, chama-o com os dados processados
+      if (this.onNewData) {
+        this.onNewData(this.processarContagens(response.data));
+      }
+    } else {
+      console.log(`[${timestamp}] Verificação realizada - nenhuma nova contagem disponível`);
     }
     
     // Atualiza o timestamp para a próxima consulta
     this.lastTimestamp = new Date(response.timestamp);
   } else {
-    console.log(`[${new Date().toLocaleTimeString()}] Nenhuma nova contagem`);
+    console.warn(`[${timestamp}] Resposta inválida da API`);
   }
 }
 
   /**
    * Verifica uma única vez por novas contagens
    */
-  async checkOnce(): Promise<void> {
-    try {
-      const response = await this.fetchContagens(this.lastTimestamp);
-      this.handleResponse(response);
-    } catch (error) {
-      console.error('Erro ao verificar contagens:', error);
-    }
+ async checkOnce(): Promise<void> {
+  console.log(`[${new Date().toLocaleTimeString()}] Verificando novas contagens desde ${this.lastTimestamp.toLocaleTimeString()}`);
+  
+  try {
+    const response = await this.fetchContagens(this.lastTimestamp);
+    this.handleResponse(response);
+  } catch (error) {
+    console.error(`[${new Date().toLocaleTimeString()}] Erro ao verificar contagens:`, error);
   }
+}
 
   /**
    * Inicia o monitoramento contínuo
@@ -211,10 +220,10 @@ private handleResponse(response: ContagemResponse): void {
    * Verifica o status atual do monitoramento
    * @returns status atual do monitoramento
    */
-  getStatus(): { running: boolean; lastUpdate: Date } {
-    return {
-      running: this.isRunning,
-      lastUpdate: this.lastTimestamp
-    };
+    getStatus(): { running: boolean; lastUpdate: Date } {
+      return {
+        running: this.isRunning,
+        lastUpdate: this.lastTimestamp
+      };
+    }
   }
-}

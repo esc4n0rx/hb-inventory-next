@@ -161,26 +161,45 @@ export default function IntegradorPage() {
 
   // Atualizar tempo de atividade
   useEffect(() => {
-    if (connectionStatus === "connected") {
-      const interval = setInterval(() => {
-        // Calcular o tempo de atividade real, em vez de números aleatórios
-        const startTime = integrationRef.current?.getStatus().lastUpdate || new Date()
-        const now = new Date()
-        const diffMs = now.getTime() - startTime.getTime()
-        const minutes = Math.floor((diffMs / 1000 / 60) % 60)
-        const hours = Math.floor(diffMs / 1000 / 60 / 60)
-
-        setConnectionStatus("connected")
+  if (connectionStatus === "connected") {
+    // Atualizar estatísticas a cada 5 segundos para ter feedback em tempo real
+    const statsInterval = setInterval(() => {
+      // Adicionar um log periódico para mostrar atividade
+      const timestamp = new Date().toLocaleTimeString();
+      setCapturedCounts(prev => {
+        // Manter os logs existentes mas adicionar um novo de verificação
+        const existingLogs = [...prev];
         
-        setStats((prev) => ({
+        // Adicionar uma entrada de log para mostrar atividade
+        if (existingLogs.length > 100) {
+          existingLogs.pop(); // Remover o mais antigo se exceder 100 logs
+        }
+        
+        return existingLogs;
+      });
+      
+      // Atualizar o tempo de atividade
+      setStats(prev => {
+        // Calcular tempo de atividade real
+        const startTime = lastSync ? new Date(lastSync) : new Date();
+        const now = new Date();
+        const diffMs = now.getTime() - startTime.getTime();
+        const minutes = Math.floor((diffMs / 1000 / 60) % 60);
+        const hours = Math.floor(diffMs / 1000 / 60 / 60);
+        
+        return {
           ...prev,
-          uptime: `${hours}h ${minutes}m`,
-        }))
-      }, 60000)
-
-      return () => clearInterval(interval)
-    }
-  }, [connectionStatus])
+          uptime: `${hours}h ${minutes}m`
+        };
+      });
+      
+    }, 5000);
+    
+    return () => {
+      clearInterval(statsInterval);
+    };
+  }
+}, [connectionStatus, lastSync]);
 
   useEffect(() => {
     // Limpar a instância anterior ao desmontar o componente
@@ -972,45 +991,41 @@ export default function IntegradorPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="bg-muted rounded-md p-4 h-[200px] overflow-y-auto font-mono text-xs">
-                    <div className="text-green-500">
-                      [{new Date().toLocaleString()}] INFO: Iniciando serviço de integração
-                    </div>
-                    <div className="text-muted-foreground">
-                      [{new Date().toLocaleString()}] DEBUG: Carregando configurações
-                    </div>
-                    <div className="text-muted-foreground">
-                      [{new Date().toLocaleString()}] DEBUG: Configurações carregadas com sucesso
-                    </div>
-                    {connectionStatus === "connected" ? (
-                      <>
-                        <div className="text-green-500">
-                          [{new Date().toLocaleString()}] INFO: Conexão estabelecida com {storeSystemUrl}
-                        </div>
-                        <div className="text-muted-foreground">
-                          [{new Date().toLocaleString()}] DEBUG: Iniciando monitoramento de contagens
-                        </div>
-                        <div className="text-green-500">
-                          [{new Date().toLocaleString()}] INFO: Monitoramento a cada {syncInterval} segundos
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-yellow-500">
-                          [{new Date().toLocaleString()}] WARN: Sistema aguardando conexão
-                        </div>
-                      </>
-                    )}
-                    {lastSync && (
+                  {connectionStatus === "connected" ? (
+                    <>
                       <div className="text-green-500">
-                        [{new Date(lastSync).toLocaleString()}] INFO: Última sincronização realizada com sucesso
+                        [{new Date().toLocaleString()}] INFO: Conexão estabelecida com {storeSystemUrl}
                       </div>
-                    )}
-                    {stats.lastError && (
-                      <div className="text-red-500">
-                        [{new Date().toLocaleString()}] ERROR: {stats.lastError}
+                      <div className="text-muted-foreground">
+                        [{new Date().toLocaleString()}] DEBUG: Iniciando monitoramento de contagens
                       </div>
-                    )}
-                  </div>
+                      <div className="text-green-500">
+                        [{new Date().toLocaleString()}] INFO: Monitoramento a cada {syncInterval} segundos
+                      </div>
+                      
+                      {/* Adicionar um log que atualiza a cada 5 segundos para mostrar atividade */}
+                      <div className="text-muted-foreground">
+                        [{new Date().toLocaleString()}] DEBUG: Verificando novas contagens...
+                      </div>
+                      
+                      {lastSync && (
+                        <div className="text-green-500">
+                          [{new Date(lastSync).toLocaleString()}] INFO: Última sincronização realizada com sucesso
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-yellow-500">
+                      [{new Date().toLocaleString()}] WARN: Sistema aguardando conexão
+                    </div>
+                  )}
+                  
+                  {stats.lastError && (
+                    <div className="text-red-500">
+                      [{new Date().toLocaleString()}] ERROR: {stats.lastError}
+                    </div>
+                  )}
+                </div>
                 </CardContent>
                 <CardFooter className="flex justify-between">
                   <Button 
