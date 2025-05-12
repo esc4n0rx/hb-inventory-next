@@ -60,7 +60,29 @@ export function FinalizarInventarioDialog({
         }
         
         const data = await response.json()
-        setRelatorio(data)
+        console.log('Dados do relatório recebidos:', data);
+      
+            // Verificar formatos específicos
+            if (data.lojasPendentes) console.log('Lojas pendentes:', data.lojasPendentes);
+            if (data.resumo_lojas) console.log('Resumo lojas:', data.resumo_lojas);
+            if (data.resumo_cds) console.log('Resumo CDs:', data.resumo_cds);
+
+            const relatorioNormalizado = {
+            ...data,
+            // Garantir que as propriedades tenham nomes consistentes
+            lojasPendentes: data.lojasPendentes || data.lojas_sem_contagem || {},
+            resumoAtivos: data.resumoAtivos || data.resumo_ativos || {},
+            resumoLojas: data.resumoLojas || data.resumo_lojas || {},
+            resumoCds: data.resumoCds || data.resumo_cds || {},
+            // Garantir que os valores booleanos estejam corretos
+            todasLojasTemContagem: data.todasLojasTemContagem ?? data.validacao?.todasLojasTemContagem ?? false,
+            temFornecedor: data.temFornecedor ?? data.validacao?.temFornecedor ?? false,
+            temTransito: data.temTransito ?? data.validacao?.temTransito ?? false,
+          }
+          
+          console.log('Relatório normalizado:', relatorioNormalizado);
+
+        setRelatorio(relatorioNormalizado)
         setRelatorioGerado(true)
       } catch (error) {
         toast.error('Erro ao gerar relatório de finalização')
@@ -245,27 +267,31 @@ export function FinalizarInventarioDialog({
                             {!relatorio?.todasLojasTemContagem && (
                               <div className="border rounded-md p-4 space-y-4">
                                 <h4 className="font-medium">Lojas sem contagem:</h4>
-                                <ScrollArea className="h-32">
-                                <div className="space-y-3">
-                                    {Object.entries(relatorio?.lojasPendentes || {}).map(([regional, lojas]) => {
-                                    const lojasArray = Array.isArray(lojas) ? lojas : [];
-                                    
-                                    return (
-                                        <div key={regional}>
-                                        <h5 className="font-medium text-sm">{regional}:</h5>
-                                        <ul className="text-sm pl-4 pt-1 space-y-1">
-                                            {lojasArray.map((loja: string) => (
-                                            <li key={loja} className="text-muted-foreground flex items-center gap-2">
-                                                <X className="h-3 w-3 text-destructive" />
-                                                {loja}
-                                            </li>
-                                            ))}
-                                        </ul>
-                                        </div>
-                                    );
-                                    })}
-                                </div>
-                                </ScrollArea>
+                                    <ScrollArea className="h-32">
+                                    <div className="space-y-3">
+                                      {Object.entries(relatorio?.lojasPendentes || {}).map(([regional, lojas]) => {
+                                        // Garantir que lojas seja um array
+                                        const lojasArray = Array.isArray(lojas) ? lojas : [];
+                                        
+                                        // Só mostrar regionais que têm pelo menos uma loja pendente
+                                        if (lojasArray.length === 0) return null;
+                                        
+                                        return (
+                                          <div key={regional}>
+                                            <h5 className="font-medium text-sm">{regional}:</h5>
+                                            <ul className="text-sm pl-4 pt-1 space-y-1">
+                                              {lojasArray.map((loja) => (
+                                                <li key={loja} className="text-muted-foreground flex items-center gap-2">
+                                                  <X className="h-3 w-3 text-destructive" />
+                                                  {loja}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </ScrollArea>
                               </div>
                             )}
                           </CardContent>
@@ -401,30 +427,40 @@ export function FinalizarInventarioDialog({
                 </div>
               ) : (
                 <ScrollArea className="h-full pr-4">
-                  {relatorioGerado && relatorio?.resumo_lojas && (
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {Object.entries(relatorio.resumo_lojas).map(([loja, ativos]: [string, any]) => (
-                          <Card key={loja} className="overflow-hidden">
-                            <CardHeader className="pb-3">
-                              <CardTitle className="text-base">{loja}</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="space-y-2">
-                                {Object.entries(ativos).map(([ativo, quantidade]: [string, any]) => (
-                                  <div key={ativo} className="flex justify-between text-sm py-1 border-b">
-                                    <span className="text-muted-foreground">{ativo}</span>
-                                    <span className="font-medium">{quantidade}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </ScrollArea>
+      {relatorioGerado && relatorio ? (
+        <div className="space-y-6">
+          {relatorio.resumoLojas && Object.keys(relatorio.resumoLojas).length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Object.entries(relatorio.resumoLojas).map(([loja, ativos]) => (
+                <Card key={loja} className="overflow-hidden">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">{loja}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                                    <div className="space-y-2">
+                                      {Object.entries(ativos as Record<string, any>).map(([ativo, quantidade]) => (
+                                        <div key={ativo} className="flex justify-between text-sm py-1 border-b">
+                                          <span className="text-muted-foreground">{ativo}</span>
+                                          <span className="font-medium">{quantidade}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center h-40">
+                              <p className="text-muted-foreground">Não há dados de lojas para exibir.</p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-40">
+                          <p className="text-muted-foreground">Nenhum relatório gerado.</p>
+                        </div>
+                      )}
+                    </ScrollArea>
               )}
             </TabsContent>
 

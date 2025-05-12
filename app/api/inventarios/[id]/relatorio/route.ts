@@ -2,7 +2,6 @@
 import { NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { lojas } from '@/data/lojas'; // Assuming lojas is Record<string, string[]>
-// import { ativos } from '@/data/ativos'; // Removed unused import
 
 // --- Interfaces for better type safety (Optional but Recommended) ---
 interface Contagem {
@@ -75,9 +74,10 @@ export async function POST(
     request: Request,
     { params }: { params: { id: string } }
 ) {
-    const id = params.id;
+    // Usar await antes de acessar as propriedades de params
+    const id = await params.id;
     console.log(`Iniciando geração de relatório para inventário ID: ${id}`);
-
+    
     try {
         // 1. Fetch necessary data
         const { data: inventario, error: inventarioError } = await supabase
@@ -131,7 +131,7 @@ export async function POST(
             }
         });
 
-        const temFornecedor = contagens.some(c => c.tipo === 'fornecedor');
+        const temFornecedor = contagens.some(c => c.tipo === 'fornecedor' && c.quantidade > 0);
         const temTransito = dadosTransito.length > 0;
 
         // 3. Process Data and Calculate Summaries (Single Pass)
