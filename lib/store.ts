@@ -317,35 +317,50 @@ export const useInventarioStore = create<InventarioStore>()(
         }
       },
       carregarContagens: async (inventarioId) => {
-        set({ isLoading: true, error: null });
-        try {
-          const idToUse = inventarioId ?? get().inventarioAtual?.id;
-          if (!idToUse) {
-            set({ contagens: [] });
-            return;
-          }
-          const res = await fetch(`/api/contagens?inventarioId=${idToUse}`);
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao carregar contagens');
-          }
-          const data: Contagem[] = await res.json();
-          set({ contagens: data });
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-        } finally {
-          set({ isLoading: false });
+      // Verifica se já há contagens carregadas para evitar requisições desnecessárias
+      const state = get();
+      const idToUse = inventarioId ?? state.inventarioAtual?.id;
+      
+      // Se não tiver ID ou já tiver contagens para este inventário, não faz nova chamada
+      if (!idToUse) {
+        set({ contagens: [] });
+        return;
+      }
+      
+      // Evita recarregar se já tiver contagens para este inventário
+      if (state.contagens.some(c => c.inventarioId === idToUse)) {
+        return; // Evita requisição redundante
+      }
+      
+      set({ isLoading: true, error: null });
+      try {
+        const res = await fetch(`/api/contagens?inventarioId=${idToUse}`);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error ?? 'Erro ao carregar contagens');
         }
-      },
+        const data: Contagem[] = await res.json();
+        set({ contagens: data });
+      } catch (err: any) {
+        console.error(err);
+        set({ error: err.message ?? 'Erro desconhecido' });
+      } finally {
+        set({ isLoading: false });
+      }
+    },
       carregarDadosTransito: async (inventarioId) => {
+        const state = get();
+        const idToUse = inventarioId ?? state.inventarioAtual?.id;
         set({ isLoading: true, error: null });
         try {
-          const idToUse = inventarioId ?? get().inventarioAtual?.id;
           if (!idToUse) {
             set({ dadosTransito: [] });
             return;
           }
+          if (state.dadosTransito.some(d => d.inventarioId === idToUse)) {
+              return; // Evita requisição redundante
+            }
+
           const res = await fetch(`/api/transito?inventarioId=${idToUse}`);
           if (!res.ok) {
             const err = await res.json();

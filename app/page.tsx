@@ -52,65 +52,52 @@ export default function Home() {
   
   const [novoInventarioDialogOpen, setNovoInventarioDialogOpen] = useState(false)
   const [carregarInventarioDialogOpen, setCarregarInventarioDialogOpen] = useState(false)
-  // Estado local para estatísticas e atualização dinâmica
   const [estatisticasLocais, setEstatisticasLocais] = useState(getEstatisticas())
-  // Estado para forçar re-renderização
   const [updateCounter, setUpdateCounter] = useState(0)
-  // Estado para aba ativa do comparativo
   const [comparativoTab, setComparativoTab] = useState('setor')
-  // Estado para indicar carregamento inicial
   const [initialLoading, setInitialLoading] = useState(true)
 
-  // Carregar dados iniciais
   useEffect(() => {
-    const carregarDados = async () => {
-      setInitialLoading(true)
-      try {
-        await carregarInventarioAtivo();
-        await carregarInventarios();
-        
-        if (inventarioAtual) {
-          await Promise.all([
-            carregarContagens(inventarioAtual.id),
-            carregarDadosTransito(inventarioAtual.id)
-          ]);
-        }
-        
-        // Atualizar estatísticas locais após carregar os dados
-        setEstatisticasLocais(getEstatisticas());
-      } catch (error) {
-        console.error("Erro ao carregar dados iniciais:", error);
-        toast.error("Não foi possível carregar todos os dados. Tente novamente mais tarde.");
-      } finally {
-        setInitialLoading(false);
+  const carregarDados = async () => {
+    if (initialLoading === false) return;
+    
+    setInitialLoading(true);
+    try {
+      await carregarInventarioAtivo();
+      await carregarInventarios();
+      
+      if (inventarioAtual) {
+        await Promise.all([
+          carregarContagens(inventarioAtual.id),
+          carregarDadosTransito(inventarioAtual.id)
+        ]);
       }
-    };
+      setEstatisticasLocais(getEstatisticas());
+    } catch (error) {
+      console.error("Erro ao carregar dados iniciais:", error);
+      toast.error("Não foi possível carregar todos os dados. Tente novamente mais tarde.");
+    } finally {
+      setInitialLoading(false);
+    }
+  };
     
     carregarDados();
   }, [carregarInventarioAtivo, carregarInventarios, carregarContagens, carregarDadosTransito, inventarioAtual, getEstatisticas]);
 
-  // Callback para lidar com mudanças nas contagens
   const handleContagemChange = useCallback(() => {
-    // Atualizar estatísticas locais
     setEstatisticasLocais(getEstatisticas());
-    // Incrementar contador para forçar re-renderização
     setUpdateCounter(c => c + 1);
   }, [getEstatisticas]);
 
-  // Registrar e limpar o listener para mudanças de contagens
   useEffect(() => {
-    // Registrar o listener
     addContagemChangeListener(handleContagemChange);
     
-    // Limpar o listener ao desmontar
     return () => {
       removeContagemChangeListener(handleContagemChange);
     };
   }, [addContagemChangeListener, removeContagemChangeListener, handleContagemChange]);
 
-  // Atualizar periodicamente as estatísticas (como backup para garantir a atualização)
   useEffect(() => {
-    // Atualizar a cada 5 segundos como fallback
     const intervalId = setInterval(() => {
       setEstatisticasLocais(getEstatisticas());
     }, 5000);
@@ -138,7 +125,6 @@ export default function Home() {
     }
   }
 
-  // Calcular dados para o comparativo de contagens
   const calcularDadosComparativos = useMemo(() => {
     if (!inventarioAtual || !contagens.length) {
       return {
@@ -150,8 +136,6 @@ export default function Home() {
     }
 
     const contagensInventario = contagens.filter(c => c.inventarioId === inventarioAtual.id);
-    
-    // Dados por setor
     const dadosPorSetor: { [key: string]: number } = {};
     contagensInventario
       .filter(c => c.tipo === 'setor')
@@ -165,9 +149,8 @@ export default function Home() {
     const setores = Object.entries(dadosPorSetor)
       .map(([nome, quantidade]) => ({ nome, quantidade: quantidade as number }))
       .sort((a, b) => b.quantidade - a.quantidade)
-      .slice(0, 10); // Top 10 setores
+      .slice(0, 10); 
     
-    // Dados por loja
     const dadosPorLoja: { [key: string]: number } = {};
     contagensInventario
       .filter(c => c.tipo === 'loja')
@@ -181,9 +164,8 @@ export default function Home() {
     const lojas = Object.entries(dadosPorLoja)
       .map(([nome, quantidade]) => ({ nome, quantidade: quantidade as number }))
       .sort((a, b) => b.quantidade - a.quantidade)
-      .slice(0, 10); // Top 10 lojas
+      .slice(0, 10); 
     
-    // Dados por fornecedor
     const dadosPorFornecedor: { [key: string]: number } = {};
     contagensInventario
       .filter(c => c.tipo === 'fornecedor')
@@ -198,7 +180,6 @@ export default function Home() {
       .map(([nome, quantidade]) => ({ nome, quantidade: quantidade as number }))
       .sort((a, b) => b.quantidade - a.quantidade);
     
-    // Dados por CD (agrupando por tipo de ativo)
     const dadosPorCD: { [key: string]: number } = {};
     contagensInventario.forEach(c => {
       if (!dadosPorCD[c.ativo]) {
@@ -235,7 +216,6 @@ export default function Home() {
     },
   }
 
-  // Estado do inventário para mostrar visualmente
   const getStatusInventario = () => {
     if (!inventarioAtual) return { 
       color: "text-muted-foreground", 
@@ -635,12 +615,10 @@ export default function Home() {
   )
 }
 
-// Interface para os dados do gráfico
 interface ComparativoChartData {
   [key: string]: string | number;
 }
 
-// Componente para os gráficos comparativos
 function ComparativoChart({ 
   data, 
   title, 

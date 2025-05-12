@@ -36,7 +36,6 @@ export default function RootLayout({
               </div>
             </div>
             <Toaster position="top-right" />
-            {/* Cliente-only initializer para integrador */}
             <IntegradorSimplesInitializer />
           </SidebarProvider>
         </ThemeProvider>
