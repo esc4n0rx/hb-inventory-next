@@ -74,8 +74,8 @@ export async function POST(
     request: Request,
     { params }: { params: { id: string } }
 ) {
-    // Usar await antes de acessar as propriedades de params
-    const id = await params.id;
+    // Correção: não use await nos parâmetros, pois já são síncronos
+    const id = params.id;
     console.log(`Iniciando geração de relatório para inventário ID: ${id}`);
     
     try {
@@ -294,7 +294,7 @@ export async function POST(
             },
             // Include summaries if needed in response, or just the ID and status
             resumoAtivos: resumoAtivos,
-            // relatorioCompleto: resultado // Optionally return the full record saved in DB
+            relatorioCompleto: resultado 
         });
 
     } catch (error) {

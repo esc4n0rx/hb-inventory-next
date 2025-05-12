@@ -69,12 +69,11 @@ export function FinalizarInventarioDialog({
 
             const relatorioNormalizado = {
             ...data,
-            // Garantir que as propriedades tenham nomes consistentes
+            id: data.relatorioId || data.id,
             lojasPendentes: data.lojasPendentes || data.lojas_sem_contagem || {},
             resumoAtivos: data.resumoAtivos || data.resumo_ativos || {},
             resumoLojas: data.resumoLojas || data.resumo_lojas || {},
             resumoCds: data.resumoCds || data.resumo_cds || {},
-            // Garantir que os valores booleanos estejam corretos
             todasLojasTemContagem: data.todasLojasTemContagem ?? data.validacao?.todasLojasTemContagem ?? false,
             temFornecedor: data.temFornecedor ?? data.validacao?.temFornecedor ?? false,
             temTransito: data.temTransito ?? data.validacao?.temTransito ?? false,
@@ -130,11 +129,15 @@ export function FinalizarInventarioDialog({
     }
   }
 
-  const handleDownloadPDF = async () => {
-  if (!relatorio) return;
+// Correção para components/finalizar-inventario-dialog.tsx:138
+const handleDownloadPDF = async () => {
+  if (!relatorio || !relatorio.id) {
+    toast.error('Relatório não disponível para download');
+    return;
+  }
   
   try {
-    // Obter dados para o PDF
+    // Garantimos que relatorio.id existe antes de fazer a chamada
     const response = await fetch(`/api/inventarios/${inventarioId}/relatorio/pdf?relatorioId=${relatorio.id}`);
     
     if (!response.ok) {

@@ -11,7 +11,8 @@ export async function GET(
   request: Request,
   { params }: { params: { id: string } }
 ) {
-  const { id } = params;
+  // Correção: não use await nos parâmetros, pois já são síncronos
+  const id = params.id;
   const { searchParams } = new URL(request.url);
   const relatorioId = searchParams.get('relatorioId');
 
