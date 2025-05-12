@@ -18,7 +18,6 @@ export default function RelatorioAtualPage() {
   const [activeTab, setActiveTab] = useState("geral")
   const estatisticas = getEstatisticas()
 
-  // Função para gerar dados de contagem por tipo de ativo
   const getContagensPorAtivo = () => {
     if (!inventarioAtual) return []
 
@@ -43,7 +42,6 @@ export default function RelatorioAtualPage() {
       .sort((a, b) => b.total - a.total)
   }
 
-  // Função para gerar dados de contagem por regional/loja
   const getContagensPorRegional = () => {
     if (!inventarioAtual) return []
 

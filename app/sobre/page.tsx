@@ -46,7 +46,7 @@ export default function SobrePage() {
           <CardContent className="space-y-4">
             <p>
               O HB Inventory é um sistema web desenvolvido para gerenciar e controlar o inventário de ativos realizado
-              mensalmente dentro de um Centro de Distribuição (CD), com apoio de lojas, regionais e fornecedores.
+              mensalmente dentro do CD Pavuna, com apoio de lojas, regionais e fornecedores.
             </p>
             <p>
               O sistema permite o registro de contagens, acompanhamento de ativos em trânsito, integração com
@@ -100,7 +100,7 @@ export default function SobrePage() {
               </div>
               <div>
                 <h3 className="font-medium">Desenvolvido por</h3>
-                <p className="text-muted-foreground">Equipe HB Inventory</p>
+                <p className="text-muted-foreground">Paulo Oliveira</p>
               </div>
             </div>
 
