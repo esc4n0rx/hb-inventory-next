@@ -32,6 +32,7 @@ import { lojas } from "@/data/lojas"
 import { setoresCD } from "@/data/setores"
 import { ativos } from "@/data/ativos"
 import { LojasPendentesCard } from "@/components/lojas-pendentes-card"
+import { FinalizarInventarioDialog } from "@/components/finalizar-inventario-dialog"
 
 export default function Home() {
   const { 
@@ -56,6 +57,7 @@ export default function Home() {
   const [updateCounter, setUpdateCounter] = useState(0)
   const [comparativoTab, setComparativoTab] = useState('setor')
   const [initialLoading, setInitialLoading] = useState(true)
+  const [finalizarInventarioDialogOpen, setFinalizarInventarioDialogOpen] = useState(false)
 
   useEffect(() => {
   const carregarDados = async () => {
@@ -105,24 +107,8 @@ export default function Home() {
     return () => clearInterval(intervalId);
   }, [getEstatisticas]);
 
-  const handleFinalizarInventario = async () => {
-    if (!inventarioAtual) {
-      toast.error("Não há inventário ativo para finalizar")
-      return
-    }
-
-    if (window.confirm("Tem certeza que deseja finalizar o inventário atual? Esta ação não pode ser desfeita.")) {
-      try {
-        await finalizarInventario()
-        toast.success("Inventário finalizado com sucesso!")
-      } catch (error) {
-        if (error instanceof Error) {
-          toast.error(error.message)
-        } else {
-          toast.error("Erro ao finalizar inventário")
-        }
-      }
-    }
+  const handleFinalizarInventario = () => {
+  setFinalizarInventarioDialogOpen(true)
   }
 
   const calcularDadosComparativos = useMemo(() => {
@@ -608,7 +594,13 @@ export default function Home() {
           </motion.div>
         )}
       </div>
-
+      {inventarioAtual && (
+          <FinalizarInventarioDialog 
+            open={finalizarInventarioDialogOpen} 
+            onOpenChange={setFinalizarInventarioDialogOpen}
+            inventarioId={inventarioAtual.id}
+          />
+        )}
       <NovoInventarioDialog open={novoInventarioDialogOpen} onOpenChange={setNovoInventarioDialogOpen} />
       <CarregarInventarioDialog open={carregarInventarioDialogOpen} onOpenChange={setCarregarInventarioDialogOpen} />
     </div>

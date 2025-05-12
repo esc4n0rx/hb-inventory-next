@@ -51,6 +51,7 @@
     "lucide-react": "^0.454.0",
     "next": "15.2.4",
     "next-themes": "latest",
+    "pdfkit": "^0.17.1",
     "react": "^18",
     "react-day-picker": "8.10.1",
     "react-dom": "^18",
@@ -67,6 +68,7 @@
   },
   "devDependencies": {
     "@types/node": "^22",
+    "@types/pdfkit": "^0.13.9",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "postcss": "^8",
