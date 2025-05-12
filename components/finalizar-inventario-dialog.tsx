@@ -24,6 +24,7 @@ import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Check, Download, FileText, AlertCircle, X, FileCheck } from "lucide-react"
+import { generatePDF } from "@/lib/pdf-generator";
 
 interface FinalizarInventarioDialogProps {
   open: boolean
@@ -108,11 +109,26 @@ export function FinalizarInventarioDialog({
   }
 
   const handleDownloadPDF = async () => {
-    if (!relatorio) return
+  if (!relatorio) return;
+  
+  try {
+    // Obter dados para o PDF
+    const response = await fetch(`/api/inventarios/${inventarioId}/relatorio/pdf?relatorioId=${relatorio.id}`);
     
-    const url = `/api/inventarios/${inventarioId}/relatorio/pdf?relatorioId=${relatorio.id}`
-    window.open(url, '_blank')
+    if (!response.ok) {
+      throw new Error('Falha ao buscar dados para o PDF');
+    }
+    
+    const data = await response.json();
+    
+    // Gerar o PDF com os dados obtidos
+    await generatePDF(data.inventario, data.relatorio);
+    
+  } catch (error) {
+    console.error('Erro ao gerar PDF:', error);
+    toast.error('Erro ao gerar PDF. Tente novamente mais tarde.');
   }
+};
 
   const getValidacaoStatus = () => {
     if (!relatorio) return { valid: false, message: 'Aguardando análise' }

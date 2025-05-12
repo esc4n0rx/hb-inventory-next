@@ -1,307 +1,305 @@
 // app/api/inventarios/[id]/relatorio/route.ts
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { lojas } from '@/data/lojas';
-import { ativos } from '@/data/ativos';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { lojas } from '@/data/lojas'; // Assuming lojas is Record<string, string[]>
+// import { ativos } from '@/data/ativos'; // Removed unused import
 
-// Inicializa o cliente Supabase
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// --- Interfaces for better type safety (Optional but Recommended) ---
+interface Contagem {
+    id: number;
+    inventario_id: string;
+    tipo: 'loja' | 'setor' | 'fornecedor';
+    origem: string;
+    ativo: string;
+    quantidade: number;
+    // add other fields if they exist
+}
 
-export async function POST(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  const id = params.id;
+interface Transito {
+    id: number;
+    inventario_id: string;
+    origem: string;
+    ativo: string;
+    quantidade: number;
+    // add other fields if they exist
+}
 
-  // Verificar se o inventário existe
-  const { data: inventario, error: inventarioError } = await supabase
-    .from('inventarios')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (inventarioError) {
-    return NextResponse.json({ error: 'Inventário não encontrado' }, { status: 404 });
-  }
-
-  // Buscar todas as contagens deste inventário
-  const { data: contagens, error: contagensError } = await supabase
-    .from('contagenshb')
-    .select('*')
-    .eq('inventario_id', id);
-
-  if (contagensError) {
-    return NextResponse.json({ error: contagensError.message }, { status: 400 });
-  }
-
-  // Buscar dados de trânsito deste inventário
-  const { data: dadosTransito, error: transitoError } = await supabase
-    .from('dados_transito')
-    .select('*')
-    .eq('inventario_id', id);
-
-  if (transitoError) {
-    return NextResponse.json({ error: transitoError.message }, { status: 400 });
-  }
-
-  // 1. Validar se todas as lojas têm registro de contagem
-  const lojasPendentes: { [key: string]: string[] } = {};
-  const lojasContadas = new Set(
-    contagens.filter(c => c.tipo === 'loja').map(c => c.origem)
-  );
-  
-  let todasLojasTemContagem = true;
-  Object.entries(lojas).forEach(([regional, lstLojas]) => {
-    const lojasPend = lstLojas.filter(l => !lojasContadas.has(l));
-    if (lojasPend.length) {
-      lojasPendentes[regional] = lojasPend;
-      todasLojasTemContagem = false;
-    }
-  });
-
-  // 2. Validar se tem registro de fornecedor na tabela de contagens
-  const temFornecedor = contagens.some(c => c.tipo === 'fornecedor');
-
-  // 3. Validar se temos dados de trânsito na tabela de trânsito
-  const temTransito = dadosTransito.length > 0;
-
-  // Gerar resumo por lojas
-  const resumoLojas: { [loja: string]: { [ativo: string]: number } } = {};
-  contagens
-    .filter(c => c.tipo === 'loja')
-    .forEach(c => {
-      if (!resumoLojas[c.origem]) {
-        resumoLojas[c.origem] = {};
-      }
-      
-      if (!resumoLojas[c.origem][c.ativo]) {
-        resumoLojas[c.origem][c.ativo] = 0;
-      }
-      
-      resumoLojas[c.origem][c.ativo] += c.quantidade;
-    });
-
-  // Gerar resumo por CDs
-  type CDKeys = 'CD ES' | 'CD SP' | 'CD RJ';
-  const resumoCDs: Record<CDKeys, Record<string, Record<string, number>>> = {
-    'CD ES': {},
-    'CD SP': {},
-    'CD RJ': {}
-  };
-  
-  // Estoque nos CDs
-  contagens
-    .filter(c => c.tipo === 'setor')
-    .forEach(c => {
-      let cdAssociado: CDKeys = 'CD SP'; // Defaultt
-      
-      // Lógica para associar setores aos CDs
-      if (c.origem.includes('ES')) {
-        cdAssociado = 'CD ES';
-      } else if (c.origem.includes('RJ')) {
-        cdAssociado = 'CD RJ';
-      }
-      
-      if (!resumoCDs[cdAssociado]['estoque']) {
-        resumoCDs[cdAssociado]['estoque'] = {};
-      }
-      
-      if (!resumoCDs[cdAssociado]['estoque'][c.ativo]) {
-        resumoCDs[cdAssociado]['estoque'][c.ativo] = 0;
-      }
-      
-      resumoCDs[cdAssociado]['estoque'][c.ativo] += c.quantidade;
-    });
-  
-  // Fornecedores
-  contagens
-    .filter(c => c.tipo === 'fornecedor')
-    .forEach(c => {
-      let cdAssociado: CDKeys = 'CD SP'; // Default
-      
-      // Lógica para associar fornecedores aos CDs
-      if (c.origem.includes('ES')) {
-        cdAssociado = 'CD ES';
-      } else if (c.origem.includes('RJ')) {
-        cdAssociado = 'CD RJ';
-      }
-      
-      if (!resumoCDs[cdAssociado]['fornecedor']) {
-        resumoCDs[cdAssociado]['fornecedor'] = {};
-      }
-      
-      if (!resumoCDs[cdAssociado]['fornecedor'][c.ativo]) {
-        resumoCDs[cdAssociado]['fornecedor'][c.ativo] = 0;
-      }
-      
-      resumoCDs[cdAssociado]['fornecedor'][c.ativo] += c.quantidade;
-    });
-  
-  // Trânsito
-  dadosTransito.forEach(t => {
-    const origem = t.origem;
-    let cdAssociado: CDKeys | null = null;
-    
-    if (origem.includes('São Paulo')) {
-      cdAssociado = 'CD SP';
-    } else if (origem.includes('Espírito Santo')) {
-      cdAssociado = 'CD ES';
-    } else if (origem.includes('Rio de Janeiro')) {
-      cdAssociado = 'CD RJ';
-    }
-    
-    if (cdAssociado !== null) {
-      if (!resumoCDs[cdAssociado]['transito']) {
-        resumoCDs[cdAssociado]['transito'] = {};
-      }
-      
-      if (!resumoCDs[cdAssociado]['transito'][t.ativo]) {
-        resumoCDs[cdAssociado]['transito'][t.ativo] = 0;
-      }
-      
-      resumoCDs[cdAssociado]['transito'][t.ativo] += t.quantidade;
-    }
-  });
-
-  // Resumo por tipo de ativo
-  interface ResumoAtivo {
+interface ResumoAtivo {
     lojas: number;
     cds: number;
     fornecedores: number;
     transito: number;
     total: number;
-  }
-  const resumoAtivos: Record<string, ResumoAtivo> = {};
-  
-  // Separar ativos por conjuntos conforme solicitado
-  const conjuntosAtivos = {
-    'HB': ['CAIXA HB 623', 'CAIXA HB 618', 'CAIXA HB 415'],
-    'HNT': ['CAIXA HNT G', 'CAIXA HNT P'],
+}
+
+type CDKey = 'CD SP' | 'CD ES' | 'CD RJ';
+
+interface CDSummary {
+    estoque: Record<string, number>;
+    fornecedor: Record<string, number>;
+    transito: Record<string, number>;
+}
+// --- End Interfaces ---
+
+
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+// Add type safety to the client instance
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+
+
+// --- Helper Function (Defined once) ---
+const conjuntosAtivos: Record<string, string[]> = {
+    'HB': ['HB 623', 'HB 618', 'HB 415','CAIXA HB 618', 'CAIXA HB 415', 'CAIXA HB 623'],
+    'HNT': ['HNT G', 'HNT P','CAIXA HNT P','CAIXA HNT G'],
     'Outros': ['CAIXA BIN', 'CAIXA BASCULHANTE']
-  };
-  
-  // Inicializar estrutura
-  Object.keys(conjuntosAtivos).forEach(conjunto => {
-    resumoAtivos[conjunto] = {
-      lojas: 0,
-      cds: 0,
-      fornecedores: 0,
-      transito: 0,
-      total: 0
-    };
-  });
-  
-  // Função para classificar ativo no conjunto correto
-  const getConjuntoAtivo = (ativo: string) => {
+};
+
+const getConjuntoAtivo = (ativo: string): 'HB' | 'HNT' | 'Outros' => {
     for (const [conjunto, listaAtivos] of Object.entries(conjuntosAtivos)) {
-      if (listaAtivos.includes(ativo)) {
-        return conjunto;
-      }
+        if (listaAtivos.includes(ativo)) { // <--- Checks if 'ativo' is in the list
+            return conjunto as 'HB' | 'HNT' | 'Outros';
+        }
+    }
+    // If not found in any list, it prints the warning and returns 'Outros'
+    if (!conjuntosAtivos['Outros'].includes(ativo)) {
+          console.warn(`Ativo não classificado encontrado: ${ativo}. Classificado como 'Outros'.`);
     }
     return 'Outros';
-  };
-  
-  // Contar lojas
-  contagens
-    .filter(c => c.tipo === 'loja')
-    .forEach(c => {
-      const conjunto = getConjuntoAtivo(c.ativo);
-      resumoAtivos[conjunto].lojas += c.quantidade;
-      resumoAtivos[conjunto].total += c.quantidade;
-    });
-  
-  // Contar CDs (setores)
-  contagens
-    .filter(c => c.tipo === 'setor')
-    .forEach(c => {
-      const conjunto = getConjuntoAtivo(c.ativo);
-      resumoAtivos[conjunto].cds += c.quantidade;
-      resumoAtivos[conjunto].total += c.quantidade;
-    });
-  
-  // Contar fornecedores
-  contagens
-    .filter(c => c.tipo === 'fornecedor')
-    .forEach(c => {
-      const conjunto = getConjuntoAtivo(c.ativo);
-      resumoAtivos[conjunto].fornecedores += c.quantidade;
-      resumoAtivos[conjunto].total += c.quantidade;
-    });
-  
-  // Contar trânsito
-  dadosTransito.forEach(t => {
-    const conjunto = getConjuntoAtivo(t.ativo);
-    resumoAtivos[conjunto].transito += t.quantidade;
-    resumoAtivos[conjunto].total += t.quantidade;
-  });
+};
+// --- End Helper Function ---
 
-  // Criar registro preliminar do relatório
-  const relatorioData = {
-    inventario_id: id,
-    lojas_sem_contagem: lojasPendentes,
-    fornecedores_sem_contagem: !temFornecedor,
-    tem_transito: temTransito,
-    resumo_lojas: resumoLojas,
-    resumo_cds: resumoCDs,
-    resumo_fornecedores: { 
-      tem_contagem: temFornecedor 
-    },
-    resumo_transito: {
-      tem_registros: temTransito,
-      quantidade: dadosTransito.length
-    },
-    resumo_ativos: resumoAtivos,
-    status: 'rascunho'
-  };
 
-  // Verificar se já existe um relatório para este inventário
-  const { data: relatorioExistente, error: relatorioError } = await supabase
-    .from('relatorios_inventario')
-    .select('id')
-    .eq('inventario_id', id)
-    .maybeSingle();
+export async function POST(
+    request: Request,
+    { params }: { params: { id: string } }
+) {
+    const id = params.id;
+    console.log(`Iniciando geração de relatório para inventário ID: ${id}`);
 
-  let resultado;
-  
-  if (relatorioExistente) {
-    // Atualizar relatório existente
-    const { data, error } = await supabase
-      .from('relatorios_inventario')
-      .update(relatorioData)
-      .eq('id', relatorioExistente.id)
-      .select()
-      .single();
-      
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    try {
+        // 1. Fetch necessary data
+        const { data: inventario, error: inventarioError } = await supabase
+            .from('inventarios')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (inventarioError) {
+            console.error("Erro ao buscar inventário:", inventarioError);
+            const status = inventarioError.code === 'PGRST116' ? 404 : 500;
+            return NextResponse.json({ error: `Inventário não encontrado ou erro ao buscar: ${inventarioError.message}` }, { status });
+        }
+         if (!inventario) {
+             // Should be caught by PGRST116, but double-check
+             return NextResponse.json({ error: 'Inventário não encontrado.' }, { status: 404 });
+         }
+
+        const { data: contagensRaw, error: contagensError } = await supabase
+            .from('contagenshb')
+            .select('*')
+            .eq('inventario_id', id);
+
+        if (contagensError) {
+            console.error("Erro ao buscar contagens:", contagensError);
+            return NextResponse.json({ error: `Erro ao buscar contagens: ${contagensError.message}` }, { status: 400 });
+        }
+        const contagens: Contagem[] = contagensRaw || []; // Ensure it's an array
+
+        const { data: dadosTransitoRaw, error: transitoError } = await supabase
+            .from('dados_transito')
+            .select('*')
+            .eq('inventario_id', id);
+
+        if (transitoError) {
+            console.error("Erro ao buscar dados de trânsito:", transitoError);
+            return NextResponse.json({ error: `Erro ao buscar dados de trânsito: ${transitoError.message}` }, { status: 400 });
+        }
+        const dadosTransito: Transito[] = dadosTransitoRaw || []; // Ensure it's an array
+
+        // 2. Perform Validations
+        const lojasContadas = new Set<string>(contagens.filter(c => c.tipo === 'loja').map(c => c.origem));
+        const lojasPendentes: Record<string, string[]> = {};
+        let todasLojasTemContagem = true;
+
+        Object.entries(lojas).forEach(([regional, lstLojas]) => {
+            const lojasPend = lstLojas.filter(l => !lojasContadas.has(l));
+            if (lojasPend.length > 0) {
+                lojasPendentes[regional] = lojasPend;
+                todasLojasTemContagem = false;
+            }
+        });
+
+        const temFornecedor = contagens.some(c => c.tipo === 'fornecedor');
+        const temTransito = dadosTransito.length > 0;
+
+        // 3. Process Data and Calculate Summaries (Single Pass)
+        const resumoLojas: Record<string, Record<string, number>> = {};
+        const resumoCDs: Record<CDKey, CDSummary> = {
+            'CD SP': { estoque: {}, fornecedor: {}, transito: {} },
+            'CD ES': { estoque: {}, fornecedor: {}, transito: {} },
+            'CD RJ': { estoque: {}, fornecedor: {}, transito: {} }
+        };
+        const resumoAtivos: Record<string, ResumoAtivo> = {};
+        // Initialize resumoAtivos based on defined conjuntos
+         Object.keys(conjuntosAtivos).forEach(conjunto => {
+             resumoAtivos[conjunto] = { lojas: 0, cds: 0, fornecedores: 0, transito: 0, total: 0 };
+         });
+
+
+        // Process Contagens
+        for (const c of contagens) {
+            const conjunto = getConjuntoAtivo(c.ativo);
+             // Ensure conjunto exists in resumoAtivos (safety check for unexpected ativos)
+             if (!resumoAtivos[conjunto]) {
+                 console.warn(`Conjunto não inicializado encontrado para ativo ${c.ativo}: ${conjunto}. Inicializando.`);
+                 resumoAtivos[conjunto] = { lojas: 0, cds: 0, fornecedores: 0, transito: 0, total: 0 };
+             }
+
+            if (c.tipo === 'loja') {
+                // Update resumoLojas
+                if (!resumoLojas[c.origem]) resumoLojas[c.origem] = {};
+                resumoLojas[c.origem][c.ativo] = (resumoLojas[c.origem][c.ativo] || 0) + c.quantidade;
+
+                // Update resumoAtivos (Lojas)
+                resumoAtivos[conjunto].lojas += c.quantidade;
+                resumoAtivos[conjunto].total += c.quantidade;
+
+            } else if (c.tipo === 'setor') {
+                // Determine CD for Setor (Assuming 'setor' means CD stock)
+                let cdAssociado: CDKey = 'CD SP'; // Default assumption
+                if (c.origem.includes('ES')) cdAssociado = 'CD ES';
+                else if (c.origem.includes('RJ')) cdAssociado = 'CD RJ';
+                // Add more specific logic if needed based on setor 'origem' format
+
+                // Update resumoCDs (Estoque)
+                resumoCDs[cdAssociado].estoque[c.ativo] = (resumoCDs[cdAssociado].estoque[c.ativo] || 0) + c.quantidade;
+
+                // Update resumoAtivos (CDs)
+                resumoAtivos[conjunto].cds += c.quantidade;
+                resumoAtivos[conjunto].total += c.quantidade;
+
+            } else if (c.tipo === 'fornecedor') {
+                // Determine CD for Fornecedor
+                let cdAssociado: CDKey = 'CD SP'; // Default assumption
+                if (c.origem.includes('ES')) cdAssociado = 'CD ES';
+                else if (c.origem.includes('RJ')) cdAssociado = 'CD RJ';
+                // Add more specific logic if needed
+
+                // Update resumoCDs (Fornecedor)
+                resumoCDs[cdAssociado].fornecedor[c.ativo] = (resumoCDs[cdAssociado].fornecedor[c.ativo] || 0) + c.quantidade;
+
+                // Update resumoAtivos (Fornecedores)
+                resumoAtivos[conjunto].fornecedores += c.quantidade;
+                resumoAtivos[conjunto].total += c.quantidade;
+            }
+        }
+
+        // Process Transito
+        for (const t of dadosTransito) {
+             const conjunto = getConjuntoAtivo(t.ativo);
+             // Ensure conjunto exists in resumoAtivos
+             if (!resumoAtivos[conjunto]) {
+                 console.warn(`Conjunto não inicializado encontrado para ativo em trânsito ${t.ativo}: ${conjunto}. Inicializando.`);
+                 resumoAtivos[conjunto] = { lojas: 0, cds: 0, fornecedores: 0, transito: 0, total: 0 };
+             }
+
+            let cdAssociado: CDKey | null = null;
+            if (t.origem.includes('São Paulo')) cdAssociado = 'CD SP';
+            else if (t.origem.includes('Espírito Santo')) cdAssociado = 'CD ES';
+            else if (t.origem.includes('Rio de Janeiro')) cdAssociado = 'CD RJ';
+
+            if (cdAssociado) {
+                // Update resumoCDs (Transito)
+                resumoCDs[cdAssociado].transito[t.ativo] = (resumoCDs[cdAssociado].transito[t.ativo] || 0) + t.quantidade;
+
+                // Update resumoAtivos (Transito)
+                resumoAtivos[conjunto].transito += t.quantidade;
+                resumoAtivos[conjunto].total += t.quantidade;
+            } else {
+                 console.warn(`Item em trânsito não associado a um CD: Ativo=${t.ativo}, Origem=${t.origem}`);
+            }
+        }
+
+        // 4. Prepare data for saving
+        const relatorioData = {
+            inventario_id: id,
+            lojas_sem_contagem: lojasPendentes, // JSON field in DB must support object/JSONB
+            fornecedores_sem_contagem: !temFornecedor, // True if NO supplier records found
+            tem_transito: temTransito, // True if ANY transit data found
+            resumo_lojas: resumoLojas, // JSON field
+            resumo_cds: resumoCDs, // JSON field
+            resumo_ativos: resumoAtivos, // JSON field
+            status: 'rascunho', // Initial status
+            // data_geracao: new Date().toISOString() // Consider adding generation timestamp
+        };
+
+        // 5. Upsert (Insert or Update) the report in the database
+        // Using Supabase upsert feature might be cleaner if primary key conflict is handled
+        // Manual check/insert/update as implemented originally:
+        const { data: relatorioExistente, error: relatorioCheckError } = await supabase
+            .from('relatorios_inventario')
+            .select('id')
+            .eq('inventario_id', id)
+            .maybeSingle(); // Returns null if not found, doesn't error
+
+        if (relatorioCheckError) {
+            console.error("Erro ao verificar relatório existente:", relatorioCheckError);
+            return NextResponse.json({ error: `Erro ao verificar relatório: ${relatorioCheckError.message}` }, { status: 500 });
+        }
+
+        let resultado; // Variable to hold the final saved/updated report data
+
+        if (relatorioExistente) {
+            console.log(`Atualizando relatório existente ID: ${relatorioExistente.id}`);
+            const { data: updatedData, error: updateError } = await supabase
+                .from('relatorios_inventario')
+                .update(relatorioData)
+                .eq('id', relatorioExistente.id)
+                .select() // Select updated data
+                .single(); // Expect single result
+
+            if (updateError) {
+                console.error("Erro ao atualizar relatório:", updateError);
+                return NextResponse.json({ error: `Erro ao atualizar relatório: ${updateError.message}` }, { status: 400 }); // 400 Bad Request likely
+            }
+            resultado = updatedData;
+        } else {
+            console.log("Criando novo relatório.");
+            const { data: insertedData, error: insertError } = await supabase
+                .from('relatorios_inventario')
+                .insert([relatorioData]) // Insert requires an array
+                .select() // Select inserted data
+                .single(); // Expect single result
+
+            if (insertError) {
+                console.error("Erro ao criar relatório:", insertError);
+                return NextResponse.json({ error: `Erro ao criar relatório: ${insertError.message}` }, { status: 400 }); // 400 Bad Request likely
+            }
+            resultado = insertedData;
+        }
+
+        console.log(`Relatório ${resultado ? `ID ${resultado.id} ` : ''}processado com sucesso.`);
+
+        // 6. Return the final response
+        return NextResponse.json({
+            message: `Relatório ${relatorioExistente ? 'atualizado' : 'criado'} com sucesso.`,
+            relatorioId: resultado.id, // Return the ID of the saved report
+            validacao: {
+                 todasLojasTemContagem,
+                 temFornecedor,
+                 temTransito,
+                 lojasPendentes: Object.keys(lojasPendentes).length > 0 ? lojasPendentes : null // Return null if empty for cleaner output
+            },
+            // Include summaries if needed in response, or just the ID and status
+            resumoAtivos: resumoAtivos,
+            // relatorioCompleto: resultado // Optionally return the full record saved in DB
+        });
+
+    } catch (error) {
+        console.error("Erro inesperado no processamento do relatório:", error);
+        const message = error instanceof Error ? error.message : 'Erro interno desconhecido no servidor.';
+        return NextResponse.json({ error: message }, { status: 500 });
     }
-    
-    resultado = data;
-  } else {
-    // Criar novo relatório
-    const { data, error } = await supabase
-      .from('relatorios_inventario')
-      .insert([relatorioData])
-      .select()
-      .single();
-      
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-    
-    resultado = data;
-  }
-  
-  // Retornar o resultado da análise e o ID do relatório
-  return NextResponse.json({
-    id: resultado.id,
-    todasLojasTemContagem,
-    temFornecedor,
-    temTransito,
-    lojasPendentes,
-    resumoAtivos,
-    relatorioCompleto: resultado
-  });
 }
