@@ -32,7 +32,7 @@ interface Estatisticas {
 }
 
 interface InventarioStore {
-  atualizarProgressoInventario: any;
+  atualizarProgressoInventario: (inventarioId: string) => Promise<void>;
   // State
   inventarioAtual: Inventario | null;
   inventarios: Inventario[];
@@ -48,7 +48,6 @@ interface InventarioStore {
   addContagemChangeListener: (listener: (event: ContagemChangeEvent) => void) => void
   removeContagemChangeListener: (listener: (event: ContagemChangeEvent) => void) => void
 
-
   atualizarConfigIntegrador: (config: IntegradorConfig & { ativo: boolean }) => void;
 
   // Integrador actions
@@ -59,8 +58,8 @@ interface InventarioStore {
   // Carregamento inicial
   carregarInventarioAtivo: () => Promise<void>;
   carregarInventarios: () => Promise<void>;
-  carregarContagens: (inventarioId?: string) => Promise<void>;
-  carregarDadosTransito: (inventarioId?: string) => Promise<void>;
+  carregarContagens: (inventarioId?: string, forceRefresh?: boolean) => Promise<void>;
+  carregarDadosTransito: (inventarioId?: string,forceRefresh?: boolean)  => Promise<void>;
 
   // Inventário actions
   iniciarInventario: (responsavel: string) => Promise<void>;
@@ -316,7 +315,7 @@ export const useInventarioStore = create<InventarioStore>()(
           set({ isLoading: false });
         }
       },
-      carregarContagens: async (inventarioId) => {
+      carregarContagens: async (inventarioId, forceRefresh = false) => {
       // Verifica se já há contagens carregadas para evitar requisições desnecessárias
       const state = get();
       const idToUse = inventarioId ?? state.inventarioAtual?.id;
@@ -327,8 +326,9 @@ export const useInventarioStore = create<InventarioStore>()(
         return;
       }
       
-      // Evita recarregar se já tiver contagens para este inventário
-      if (state.contagens.some(c => c.inventarioId === idToUse)) {
+      // Se forceRefresh = true, sempre busca do banco
+      // Senão, evita recarregar se já tiver contagens para este inventário
+      if (!forceRefresh && state.contagens.some(c => c.inventarioId === idToUse)) {
         return; // Evita requisição redundante
       }
       
@@ -348,19 +348,21 @@ export const useInventarioStore = create<InventarioStore>()(
         set({ isLoading: false });
       }
     },
-      carregarDadosTransito: async (inventarioId) => {
+      carregarDadosTransito: async (inventarioId, forceRefresh = false) => {
         const state = get();
         const idToUse = inventarioId ?? state.inventarioAtual?.id;
+        
+        if (!idToUse) {
+          set({ dadosTransito: [] });
+          return;
+        }
+        
+        if (!forceRefresh && state.dadosTransito.some(d => d.inventarioId === idToUse)) {
+          return; // Evita requisição redundante
+        }
+        
         set({ isLoading: true, error: null });
         try {
-          if (!idToUse) {
-            set({ dadosTransito: [] });
-            return;
-          }
-          if (state.dadosTransito.some(d => d.inventarioId === idToUse)) {
-              return; // Evita requisição redundante
-            }
-
           const res = await fetch(`/api/transito?inventarioId=${idToUse}`);
           if (!res.ok) {
             const err = await res.json();
@@ -493,6 +495,7 @@ export const useInventarioStore = create<InventarioStore>()(
               console.error('Erro em listener:', e);
             }
           });
+          await get().carregarContagens(inventarioAtual.id, true);
           await get().atualizarProgressoInventario(inventarioAtual.id);
         } catch (err: any) {
           console.error(err);
@@ -524,6 +527,7 @@ export const useInventarioStore = create<InventarioStore>()(
               c.id === id ? updated : c
             ),
           }));
+          await get().carregarContagens(inventarioAtual.id, true);
           await get().atualizarProgressoInventario(inventarioAtual.id);
         } catch (err: any) {
           console.error(err);
@@ -550,6 +554,7 @@ export const useInventarioStore = create<InventarioStore>()(
           set((state) => ({
             contagens: state.contagens.filter((c) => c.id !== id),
           }));
+          await get().carregarContagens(inventarioAtual.id, true);
           await get().atualizarProgressoInventario(inventarioAtual.id);
         } catch (err: any) {
           console.error(err);
@@ -665,7 +670,7 @@ export const useInventarioStore = create<InventarioStore>()(
     {
       name: 'hb-inventory-storage',
       partialize: (state) => {
-        const { contagemChangeListeners, ...rest } = state;
+        const { contagemChangeListeners, contagens, dadosTransito, inventarios, ...rest } = state;
         return rest;
       },
     }

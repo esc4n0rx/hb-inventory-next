@@ -2,8 +2,7 @@ export const lojas = {
   "Pertel": [
     "ABELARDO BUENO",
     "ADALBERTO FERREIRA",
-    "AV. DAS AMERICAS",
-    "AV.DAS AMERICAS",
+    "AV DAS AMERICAS",
     "BARRA",
     "BARRA BLUE",
     "BARRA DA TIJUCA",

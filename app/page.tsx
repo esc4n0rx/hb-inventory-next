@@ -70,8 +70,8 @@ export default function Home() {
       
       if (inventarioAtual) {
         await Promise.all([
-          carregarContagens(inventarioAtual.id),
-          carregarDadosTransito(inventarioAtual.id)
+          carregarContagens(inventarioAtual.id,true),
+          carregarDadosTransito(inventarioAtual.id,true)
         ]);
       }
       setEstatisticasLocais(getEstatisticas());
@@ -100,12 +100,22 @@ export default function Home() {
   }, [addContagemChangeListener, removeContagemChangeListener, handleContagemChange]);
 
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      setEstatisticasLocais(getEstatisticas());
-    }, 5000);
+    if (!inventarioAtual) return;
+
+    const intervalId = setInterval(async () => {
+    if (inventarioAtual) {
+      try {
+        await carregarContagens(inventarioAtual.id, true);
+        await carregarDadosTransito(inventarioAtual.id, true);
+        setEstatisticasLocais(getEstatisticas());
+      } catch (error) {
+        console.error("Erro ao atualizar dados:", error);
+      }
+    }
+  }, 30000); // 30 segundos
     
     return () => clearInterval(intervalId);
-  }, [getEstatisticas]);
+}, [inventarioAtual, carregarContagens, carregarDadosTransito, getEstatisticas]);
 
   const handleFinalizarInventario = () => {
   setFinalizarInventarioDialogOpen(true)
