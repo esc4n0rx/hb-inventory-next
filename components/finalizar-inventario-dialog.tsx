@@ -46,54 +46,63 @@ export function FinalizarInventarioDialog({
   const { finalizarInventario } = useInventarioStore()
 
   useEffect(() => {
-  const gerarRelatorio = async () => {
-    if (!open || !inventarioId) return
-    
-    setIsLoading(true)
-    try {
-      const response = await fetch(`/api/inventarios/${inventarioId}/relatorio`, {
-        method: 'POST'
-      })
+    const gerarRelatorio = async () => {
+      if (!open || !inventarioId) return
       
-      if (!response.ok) {
-        throw new Error('Falha ao gerar relatório')
-      }
+      setIsLoading(true)
+      try {
+        const response = await fetch(`/api/inventarios/${inventarioId}/relatorio`, {
+          method: 'POST'
+        })
+        
+        if (!response.ok) {
+          throw new Error('Falha ao gerar relatório')
+        }
+        
+        const data = await response.json()
+        console.log('Dados do relatório recebidos:', data);
       
-      const data = await response.json()
-      console.log('Dados do relatório recebidos:', data);
-    
-      // Verificar e normalizar as estruturas de dados para garantir compatibilidade
-      const relatorioNormalizado = {
-        ...data,
-        id: data.relatorioId || data.id,
-        lojasPendentes: data.validacao?.lojasPendentes || data.lojas_sem_contagem || {},
-        resumoAtivos: data.resumoAtivos || data.resumo_ativos || {},
-        resumoLojas: data.resumoLojas || data.resumo_lojas || {},
-        resumoCds: data.resumoCds || data.resumo_cds || {},
-        todasLojasTemContagem: data.todasLojasTemContagem ?? data.validacao?.todasLojasTemContagem ?? false,
-        temFornecedor: data.temFornecedor ?? data.validacao?.temFornecedor ?? false,
-        temTransito: data.temTransito ?? data.validacao?.temTransito ?? false,
-        // Garantir que as propriedades existam tanto camelCase quanto snake_case para compatibilidade
-        resumo_ativos: data.resumoAtivos || data.resumo_ativos || {},
-        resumo_lojas: data.resumoLojas || data.resumo_lojas || {},
-        resumo_cds: data.resumoCds || data.resumo_cds || {},
-      }
-      
-      console.log('Relatório normalizado:', relatorioNormalizado);
+        // Usar os dados completos diretamente, aproveitando todas as estruturas possíveis
+        const relatorioNormalizado = {
+          ...data,
+          // Usar dados do relatório completo se disponível, ou manter compatibilidade com estrutura antiga
+          id: data.relatorioId || data.id,
+          resumoLojas: data.relatorioCompleto?.resumo_lojas || data.resumo_lojas || {},
+          resumoCds: data.relatorioCompleto?.resumo_cds || data.resumo_cds || {},
+          resumoAtivos: data.relatorioCompleto?.resumo_ativos || data.resumoAtivos || data.resumo_ativos || {},
+          // Valores booleanos de validação
+          todasLojasTemContagem: data.validacao?.todasLojasTemContagem ?? 
+                                (Object.keys(data.relatorioCompleto?.lojas_sem_contagem || {}).length === 0) ?? 
+                                false,
+          temFornecedor: data.validacao?.temFornecedor ?? 
+                         data.relatorioCompleto?.tem_fornecedor ?? 
+                         data.relatorioCompleto?.resumo_fornecedores?.tem_contagem ?? 
+                         true,
+          temTransito: data.validacao?.temTransito ?? 
+                       data.relatorioCompleto?.tem_transito ?? 
+                       data.relatorioCompleto?.resumo_transito?.tem_registros ?? 
+                       false,
+          lojasPendentes: data.validacao?.lojasPendentes || 
+                          data.relatorioCompleto?.lojas_sem_contagem || 
+                          data.lojas_sem_contagem || 
+                          {}
+        }
+        
+        console.log('Relatório normalizado:', relatorioNormalizado);
 
-      setRelatorio(relatorioNormalizado)
-      setRelatorioGerado(true)
-    } catch (error) {
-      toast.error('Erro ao gerar relatório de finalização')
-      console.error(error)
-      onOpenChange(false)
-    } finally {
-      setIsLoading(false)
+        setRelatorio(relatorioNormalizado)
+        setRelatorioGerado(true)
+      } catch (error) {
+        toast.error('Erro ao gerar relatório de finalização')
+        console.error(error)
+        onOpenChange(false)
+      } finally {
+        setIsLoading(false)
+      }
     }
-  }
-  
-  gerarRelatorio()
-}, [open, inventarioId, onOpenChange])
+    
+    gerarRelatorio()
+  }, [open, inventarioId, onOpenChange])
 
   const handleFinalizarInventario = async () => {
     if (!relatorio || !aprovador.trim()) {
@@ -129,35 +138,34 @@ export function FinalizarInventarioDialog({
     }
   }
 
-
-const handleDownloadPDF = async () => {
-  if (!relatorio || !relatorio.id) {
-    toast.error('Relatório não disponível para download');
-    return;
-  }
-  
-  try {
-    setIsLoading(true);
-    // Garantir que relatorio.id existe antes de fazer a chamada
-    const response = await fetch(`/api/inventarios/${inventarioId}/relatorio/pdf?relatorioId=${relatorio.id}`);
-    
-    if (!response.ok) {
-      throw new Error('Falha ao buscar dados para o PDF');
+  const handleDownloadPDF = async () => {
+    if (!relatorio || !relatorio.id) {
+      toast.error('Relatório não disponível para download');
+      return;
     }
     
-    const data = await response.json();
-    
-    // Gerar o PDF com os dados obtidos
-    generatePDF(data.inventario, data.relatorio);
-    toast.success('PDF gerado com sucesso!');
-    
-  } catch (error) {
-    console.error('Erro ao gerar PDF:', error);
-    toast.error('Erro ao gerar PDF. Tente novamente mais tarde.');
-  } finally {
-    setIsLoading(false);
-  }
-};
+    try {
+      setIsLoading(true);
+      // Garantir que relatorio.id existe antes de fazer a chamada
+      const response = await fetch(`/api/inventarios/${inventarioId}/relatorio/pdf?relatorioId=${relatorio.id}`);
+      
+      if (!response.ok) {
+        throw new Error('Falha ao buscar dados para o PDF');
+      }
+      
+      const data = await response.json();
+      
+      // Gerar o PDF com os dados obtidos
+      generatePDF(data.inventario, data.relatorio);
+      toast.success('PDF gerado com sucesso!');
+      
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      toast.error('Erro ao gerar PDF. Tente novamente mais tarde.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const getValidacaoStatus = () => {
     if (!relatorio) return { valid: false, message: 'Aguardando análise' }
@@ -372,7 +380,7 @@ const handleDownloadPDF = async () => {
                 </div>
               ) : (
                 <ScrollArea className="h-full pr-4">
-                  {relatorioGerado && relatorio?.resumoAtivos && (
+                  {relatorioGerado && relatorio?.resumoAtivos && Object.keys(relatorio?.resumoAtivos).length > 0 ? (
                     <div className="space-y-6">
                       <Card>
                         <CardHeader className="pb-3">
@@ -381,7 +389,7 @@ const handleDownloadPDF = async () => {
                         </CardHeader>
                         <CardContent>
                           <div className="space-y-6">
-                            {Object.entries(relatorio.resumoAtivos).map(([conjunto, dados]: [string, any]) => (
+                             {Object.entries(relatorio.resumoAtivos).map(([conjunto, dados]: [string, any]) => (
                               <div key={conjunto} className="space-y-3">
                                 <div className="flex justify-between items-center">
                                   <h3 className="text-lg font-medium">{conjunto}</h3>
@@ -419,6 +427,10 @@ const handleDownloadPDF = async () => {
                         </CardContent>
                       </Card>
                     </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-40">
+                      <p className="text-muted-foreground">Não há dados de resumo para exibir.</p>
+                    </div>
                   )}
                 </ScrollArea>
               )}
@@ -434,39 +446,31 @@ const handleDownloadPDF = async () => {
                 </div>
               ) : (
                 <ScrollArea className="h-full pr-4">
-                  {relatorioGerado && relatorio ? (
+                  {relatorioGerado && relatorio && relatorio.resumoLojas && Object.keys(relatorio.resumoLojas).length > 0 ? (
                     <div className="space-y-6">
-                      {/* Verificamos as diferentes propriedades possíveis para os dados de loja */}
-                      {(relatorio.resumoLojas || relatorio.resumo_lojas) && 
-                      Object.keys(relatorio.resumoLojas || relatorio.resumo_lojas).length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {Object.entries((relatorio.resumoLojas || relatorio.resumo_lojas)).map(([loja, ativos]) => (
-                            <Card key={loja} className="overflow-hidden">
-                              <CardHeader className="pb-3">
-                                <CardTitle className="text-base">{loja}</CardTitle>
-                              </CardHeader>
-                              <CardContent>
-                                <div className="space-y-2">
-                                  {Object.entries(ativos as Record<string, any>).map(([ativo, quantidade]) => (
-                                    <div key={ativo} className="flex justify-between text-sm py-1 border-b">
-                                      <span className="text-muted-foreground">{ativo}</span>
-                                      <span className="font-medium">{quantidade}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center h-40">
-                          <p className="text-muted-foreground">Não há dados de lojas para exibir.</p>
-                        </div>
-                      )}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {Object.entries(relatorio.resumoLojas).map(([loja, ativos]) => (
+                          <Card key={loja} className="overflow-hidden">
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-base">{loja}</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="space-y-2">
+                                {Object.entries(ativos as Record<string, any>).map(([ativo, quantidade]) => (
+                                  <div key={ativo} className="flex justify-between text-sm py-1 border-b">
+                                    <span className="text-muted-foreground">{ativo}</span>
+                                    <span className="font-medium">{quantidade}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
                     </div>
                   ) : (
                     <div className="flex items-center justify-center h-40">
-                      <p className="text-muted-foreground">Nenhum relatório gerado.</p>
+                      <p className="text-muted-foreground">Não há dados de lojas para exibir.</p>
                     </div>
                   )}
                 </ScrollArea>
@@ -475,73 +479,77 @@ const handleDownloadPDF = async () => {
 
             <TabsContent value="cds" className="flex-1 overflow-hidden">
               {isLoading ? (
-              <div className="flex justify-center items-center h-full">
-                <svg className="animate-spin h-8 w-8 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              </div>
-            ) : (
-              <ScrollArea className="h-full pr-4">
-                {relatorioGerado && (relatorio?.resumoCds || relatorio?.resumo_cds) && (
-                  <div className="space-y-6">
-                    {Object.entries(relatorio.resumoCds || relatorio.resumo_cds).map(([cd, dados]: [string, any]) => (
-                      <Card key={cd}>
-                        <CardHeader className="pb-3">
-                          <CardTitle>{cd}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                          {/* Estoque */}
-                          {dados.estoque && Object.keys(dados.estoque).length > 0 && (
-                            <div>
-                              <h4 className="font-medium mb-2">Estoque</h4>
-                              <div className="grid grid-cols-2 gap-2">
-                                {Object.entries(dados.estoque).map(([ativo, quantidade]: [string, any]) => (
-                                  <div key={ativo} className="flex justify-between text-sm py-1 border-b">
-                                    <span className="text-muted-foreground">{ativo}</span>
-                                    <span className="font-medium">{quantidade}</span>
-                                  </div>
-                                ))}
+                <div className="flex justify-center items-center h-full">
+                  <svg className="animate-spin h-8 w-8 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </div>
+              ) : (
+                <ScrollArea className="h-full pr-4">
+                  {relatorioGerado && relatorio.resumoCds && Object.keys(relatorio.resumoCds).length > 0 ? (
+                    <div className="space-y-6">
+                      {Object.entries(relatorio.resumoCds).map(([cd, dados]: [string, any]) => (
+                        <Card key={cd}>
+                          <CardHeader className="pb-3">
+                            <CardTitle>{cd}</CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-6">
+                            {/* Estoque */}
+                            {dados.estoque && Object.keys(dados.estoque).length > 0 && (
+                              <div>
+                                <h4 className="font-medium mb-2">Estoque</h4>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {Object.entries(dados.estoque).map(([ativo, quantidade]: [string, any]) => (
+                                    <div key={ativo} className="flex justify-between text-sm py-1 border-b">
+                                      <span className="text-muted-foreground">{ativo}</span>
+                                      <span className="font-medium">{quantidade}</span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                          
-                          {/* Fornecedor */}
-                          {dados.fornecedor && Object.keys(dados.fornecedor).length > 0 && (
-                            <div>
-                              <h4 className="font-medium mb-2">Fornecedor</h4>
-                              <div className="grid grid-cols-2 gap-2">
-                                {Object.entries(dados.fornecedor).map(([ativo, quantidade]: [string, any]) => (
-                                  <div key={ativo} className="flex justify-between text-sm py-1 border-b">
-                                    <span className="text-muted-foreground">{ativo}</span>
-                                    <span className="font-medium">{quantidade}</span>
-                                  </div>
-                                ))}
+                            )}
+                            
+                            {/* Fornecedor */}
+                            {dados.fornecedor && Object.keys(dados.fornecedor).length > 0 && (
+                              <div>
+                                <h4 className="font-medium mb-2">Fornecedor</h4>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {Object.entries(dados.fornecedor).map(([ativo, quantidade]: [string, any]) => (
+                                    <div key={ativo} className="flex justify-between text-sm py-1 border-b">
+                                      <span className="text-muted-foreground">{ativo}</span>
+                                      <span className="font-medium">{quantidade}</span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                          
-                          {/* Trânsito */}
-                          {dados.transito && Object.keys(dados.transito).length > 0 && (
-                            <div>
-                              <h4 className="font-medium mb-2">Em Trânsito</h4>
-                              <div className="grid grid-cols-2 gap-2">
-                                {Object.entries(dados.transito).map(([ativo, quantidade]: [string, any]) => (
-                                  <div key={ativo} className="flex justify-between text-sm py-1 border-b">
-                                    <span className="text-muted-foreground">{ativo}</span>
-                                    <span className="font-medium">{quantidade}</span>
-                                  </div>
-                                ))}
+                            )}
+                            
+                            {/* Trânsito */}
+                            {dados.transito && Object.keys(dados.transito).length > 0 && (
+                              <div>
+                                <h4 className="font-medium mb-2">Em Trânsito</h4>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {Object.entries(dados.transito).map(([ativo, quantidade]: [string, any]) => (
+                                    <div key={ativo} className="flex justify-between text-sm py-1 border-b">
+                                      <span className="text-muted-foreground">{ativo}</span>
+                                      <span className="font-medium">{quantidade}</span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            )}
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-40">
+                      <p className="text-muted-foreground">Não há dados de CDs para exibir.</p>
+                    </div>
+                  )}
+                </ScrollArea>
+              )}
             </TabsContent>
           </Tabs>
         </div>
