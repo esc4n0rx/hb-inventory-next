@@ -108,7 +108,7 @@ export default function SobrePage() {
       
       <motion.div 
         style={{ opacity }}
-        className="relative pt-16 pb-24 md:pt-24 md:pb-32 overflow-hidden"
+        className="relative pt-16 pb-24 md:pt-24 md:pb-32" // Removido overflow-hidden para o glow ser visível, ajuste se necessário
       >
         <div className="container mx-auto px-4 relative z-10">
           <motion.div
@@ -130,7 +130,7 @@ export default function SobrePage() {
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ duration: 0.5, delay: 0.3 }}
-              className="text-4xl md:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-accent to-blue-500"
+              className="text-4xl md:text-6xl font-bold mb-4 bg-clip-text bg-gradient-to-r from-accent to-blue-500"
             >
               HB Inventory
             </motion.h1>
@@ -157,10 +157,18 @@ export default function SobrePage() {
           </motion.div>
         </div>
         
-        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-border to-transparent"></div>
+        {/* Efeito de Glow Modificado */}
+        <div 
+          className="absolute -bottom-2 left-0 right-0 h-8 bg-gradient-to-t from-transparent via-blue-500/20 to-transparent blur-md"
+          style={{ zIndex: 5 }} 
+        ></div>
+        <div 
+          className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background via-blue-400/10 to-transparent opacity-50 blur-lg"
+          style={{ zIndex: 4 }} 
+        ></div>
       </motion.div>
       
-      <div className="container mx-auto px-4 pb-20">
+      <div className="container mx-auto px-4 pb-20 relative z-10"> {/* Adicionado relative z-10 para garantir que o conteúdo fique acima do glow de fundo se necessário */}
         <div className="grid gap-12">
           <motion.div
             ref={ref}
@@ -172,12 +180,13 @@ export default function SobrePage() {
             <div className="absolute -left-4 top-0 bottom-0 w-px bg-gradient-to-b from-accent/30 to-transparent"></div>
             
             <Card className="border bg-card/50 backdrop-blur-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-2xl flex items-center gap-2">
-                  <Info className="h-5 w-5 text-accent" />
+              {/* CardHeader Modificado para maior visibilidade do aviso */}
+              <CardHeader className="pb-3 pt-4">
+                <CardTitle className="text-3xl flex items-center gap-3">
+                  <Info className="h-7 w-7 text-blue-500" /> {/* Ícone maior e cor alterada */}
                   Visão Geral do Projeto
                 </CardTitle>
-                <CardDescription className="text-base">Entenda o propósito e a missão do HB Inventory</CardDescription>
+                <CardDescription className="text-base pt-1">Entenda o propósito e a missão do HB Inventory</CardDescription>
               </CardHeader>
               
               <CardContent className="space-y-6">
