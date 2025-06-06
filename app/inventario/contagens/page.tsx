@@ -46,6 +46,9 @@ export default function ContagensPage() {
     ativo: string;
     quantidade: number;
     responsavel: string;
+    transito_ativo?: string;
+    transito_quantidade?: number;
+    transito_responsavel?: string;
   }>({
     tipo: "loja",
     origem: "",
@@ -53,6 +56,9 @@ export default function ContagensPage() {
     ativo: "",
     quantidade: 1,
     responsavel: "",
+    transito_ativo: "",
+    transito_quantidade: 1,
+    transito_responsavel: "",
   })
 
   // Carregar contagens ao montar o componente
@@ -70,6 +76,9 @@ export default function ContagensPage() {
       ativo: "",
       quantidade: 1,
       responsavel: "",
+      transito_ativo: "",
+      transito_quantidade: 1,
+      transito_responsavel: "",
     })
     setEditingId(null)
   }
@@ -88,6 +97,9 @@ export default function ContagensPage() {
         ativo: contagem.ativo,
         quantidade: contagem.quantidade,
         responsavel: contagem.responsavel,
+        transito_ativo: contagem.transito_ativo || "",
+        transito_quantidade: contagem.transito_quantidade || 1,
+        transito_responsavel: contagem.transito_responsavel || "",
       })
       setEditingId(contagem.id)
     } else {
@@ -111,18 +123,45 @@ export default function ContagensPage() {
     }
 
     try {
+      const {
+        transito_ativo,
+        transito_quantidade,
+        transito_responsavel,
+        ...regularFormData
+      } = formData;
+
+      let dataToSubmit: any = { ...regularFormData };
+
+      if (
+        formData.tipo === "loja" &&
+        (formData.origem === "CD SP" || formData.origem === "CD ES") &&
+        transito_ativo && transito_ativo.trim() !== "" // Ensure transito_ativo has a value
+      ) {
+        dataToSubmit = {
+          ...dataToSubmit,
+          transito_ativo,
+          transito_quantidade,
+          transito_responsavel,
+        };
+      } else {
+        // Ensure these fields are not sent if condition is not met or transito_ativo is empty
+        delete dataToSubmit.transito_ativo;
+        delete dataToSubmit.transito_quantidade;
+        delete dataToSubmit.transito_responsavel;
+      }
+
       if (editingId) {
-        await editarContagem(editingId, formData)
-        toast.success("Contagem atualizada com sucesso!")
+        await editarContagem(editingId, dataToSubmit);
+        toast.success("Contagem atualizada com sucesso!");
       } else {
         await adicionarContagem({
           inventarioId: inventarioAtual.id,
-          ...formData,
-        })
-        toast.success("Contagem adicionada com sucesso!")
+          ...dataToSubmit,
+        });
+        toast.success("Contagem adicionada com sucesso!");
       }
 
-      handleCloseDialog()
+      handleCloseDialog();
     } catch (error) {
       if (error instanceof Error) {
         toast.error(error.message)
@@ -441,6 +480,65 @@ export default function ContagensPage() {
                   disabled={isLoading}
                 />
               </div>
+
+              {formData.tipo === "loja" && (formData.origem === "CD SP" || formData.origem === "CD ES") && (
+                <>
+                  <div className="col-span-4 my-4 border-t pt-4">
+                    <p className="text-center font-semibold text-muted-foreground">Contagem em Trânsito</p>
+                  </div>
+
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="transito_ativo" className="text-right">
+                      Ativo Trânsito
+                    </Label>
+                    <Select
+                      value={formData.transito_ativo}
+                      onValueChange={(value) => setFormData({ ...formData, transito_ativo: value })}
+                      disabled={isLoading}
+                    >
+                      <SelectTrigger id="transito_ativo" className="col-span-3">
+                        <SelectValue placeholder="Selecione o ativo em trânsito" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ativos.map((ativo) => (
+                          <SelectItem key={ativo} value={ativo}>
+                            {ativo}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="transito_quantidade" className="text-right">
+                      Qtd. Trânsito
+                    </Label>
+                    <Input
+                      id="transito_quantidade"
+                      type="number"
+                      min="1"
+                      value={formData.transito_quantidade}
+                      onChange={(e) => setFormData({ ...formData, transito_quantidade: Number.parseInt(e.target.value) || 1 })}
+                      className="col-span-3"
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="transito_responsavel" className="text-right">
+                      Resp. Trânsito
+                    </Label>
+                    <Input
+                      id="transito_responsavel"
+                      value={formData.transito_responsavel}
+                      onChange={(e) => setFormData({ ...formData, transito_responsavel: e.target.value })}
+                      placeholder="Responsável pelo trânsito"
+                      className="col-span-3"
+                      disabled={isLoading}
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             <DialogFooter>
