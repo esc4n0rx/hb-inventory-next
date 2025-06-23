@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Inventario, Contagem, DadosTransito } from './types';
+import type { Inventario, Contagem, DadosTransito, ContagemBulk } from './types';
 import { lojas } from '@/data/lojas';
 import { setoresCD } from '@/data/setores';
 
@@ -59,7 +59,7 @@ interface InventarioStore {
   carregarInventarioAtivo: () => Promise<void>;
   carregarInventarios: () => Promise<void>;
   carregarContagens: (inventarioId?: string, forceRefresh?: boolean) => Promise<void>;
-  carregarDadosTransito: (inventarioId?: string,forceRefresh?: boolean)  => Promise<void>;
+  carregarDadosTransito: (inventarioId?: string, forceRefresh?: boolean) => Promise<void>;
 
   // Inventário actions
   iniciarInventario: (responsavel: string) => Promise<void>;
@@ -67,12 +67,13 @@ interface InventarioStore {
   carregarInventario: (id: string) => Promise<void>;
 
   // Contagem actions
-  adicionarContagem: (contagem: Omit<Contagem, 'id' | 'dataContagem'>) => Promise<void>;
+  adicionarContagem: (dados: Omit<Contagem, 'id' | 'dataContagem'>) => Promise<void>;
+  adicionarContagemBulk: (dados: ContagemBulk) => Promise<void>;
   editarContagem: (id: string, dados: Partial<Contagem>) => Promise<void>;
   removerContagem: (id: string) => Promise<void>;
 
   // Trânsito actions
-  adicionarTransito: (dados: Omit<DadosTransito, 'id' | 'dataEnvio'>) => Promise<void>;
+  adicionarTransito: (dados: Omit<DadosTransito, 'id' | 'dataEnvio' | 'dataRecebimento'>) => Promise<void>;
   atualizarStatusTransito: (id: string, status: DadosTransito['status']) => Promise<void>;
 
   // Estatísticas
@@ -82,7 +83,7 @@ interface InventarioStore {
 export const useInventarioStore = create<InventarioStore>()(
   persist(
     (set, get) => ({
-      // State
+      // Initial state
       inventarioAtual: null,
       inventarios: [],
       contagens: [],
@@ -94,28 +95,25 @@ export const useInventarioStore = create<InventarioStore>()(
       integradorConfig: {
         apiUrl: '',
         apiKey: '',
-        syncInterval: 30,
-        autoImport: true,
+        syncInterval: 5,
+        autoImport: false,
         notifyOnCapture: true,
         lastSync: null,
       },
 
       contagemChangeListeners: [],
 
-
       addContagemChangeListener: (listener) => {
         set((state) => ({
           contagemChangeListeners: [...state.contagemChangeListeners, listener]
         }));
       },
-      
+
       removeContagemChangeListener: (listener) => {
         set((state) => ({
           contagemChangeListeners: state.contagemChangeListeners.filter(l => l !== listener)
         }));
       },
-
-
 
       atualizarConfigIntegrador: (config) => {
         set({
@@ -127,120 +125,35 @@ export const useInventarioStore = create<InventarioStore>()(
             autoImport: config.autoImport,
             notifyOnCapture: config.notifyOnCapture,
             lastSync: config.lastSync,
-          }
+          },
         });
       },
 
-      // Modificar a função ativarIntegrador existente
-      ativarIntegrador: async (config) => {
-        const completeConfig = {
-          ativo: true,
-          ...config,
-          lastSync: new Date().toISOString(),
-        };
-        
-        // Salvar no banco de dados primeiro
-        try {
-          console.log('Iniciando salvamento da configuração do integrador:', completeConfig);
-          const response = await fetch('/api/config/integrador', {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(completeConfig),
-          });
-
-          const responseData = await response.json();
-          
-          if (!response.ok) {
-            console.error('Resposta de erro da API:', responseData);
-            throw new Error('Falha ao salvar configuração do integrador');
-          }
-          
-          console.log("Configuração salva no banco com sucesso:", completeConfig);
-          
-          // Depois atualizar o estado local
-          set({
-            integradorAtivo: true,
-            integradorConfig: {
-              apiUrl: config.apiUrl,
-              apiKey: config.apiKey,
-              syncInterval: config.syncInterval,
-              autoImport: config.autoImport,
-              notifyOnCapture: config.notifyOnCapture,
-              lastSync: new Date().toISOString(),
-            },
-          });
-          console.log('Estado local atualizado com sucesso');
-        } catch (error) {
-          console.error("Erro ao salvar configuração do integrador:", error);
-          throw error;
-        }
+      ativarIntegrador: (config) => {
+        set({
+          integradorAtivo: true,
+          integradorConfig: {
+            ...config,
+            lastSync: null,
+          },
+        });
       },
 
-      desativarIntegrador: async () => {
-        const config = get().integradorConfig;
-        const completeConfig = {
-          ativo: false,
-          apiUrl: config.apiUrl,
-          apiKey: config.apiKey,
-          syncInterval: config.syncInterval,
-          autoImport: config.autoImport,
-          notifyOnCapture: config.notifyOnCapture,
-          lastSync: config.lastSync,
-        };
-        
-        // Salvar no banco de dados primeiro
-        try {
-          const response = await fetch('/api/config/integrador', {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(completeConfig),
-          });
-          
-          if (!response.ok) {
-            throw new Error('Falha ao salvar configuração do integrador');
-          }
-          
-          console.log("Desativação salva no banco com sucesso");
-          
-          // Depois atualizar o estado local
-          set({ integradorAtivo: false });
-        } catch (error) {
-          console.error("Erro ao salvar configuração do integrador:", error);
-          throw error;
-        }
+      desativarIntegrador: () => {
+        set({
+          integradorAtivo: false,
+          integradorConfig: {
+            apiUrl: '',
+            apiKey: '',
+            syncInterval: 5,
+            autoImport: false,
+            notifyOnCapture: true,
+            lastSync: null,
+          },
+        });
       },
-      atualizarUltimoSync: async (timestamp) => {
-        const config = get().integradorConfig;
-        const integradorAtivo = get().integradorAtivo;
-        
-        const completeConfig = {
-          ativo: integradorAtivo,
-          apiUrl: config.apiUrl,
-          apiKey: config.apiKey,
-          syncInterval: config.syncInterval,
-          autoImport: config.autoImport,
-          notifyOnCapture: config.notifyOnCapture,
-          lastSync: timestamp,
-        };
-        
-        // Atualizar no banco de dados
-        try {
-          await fetch('/api/config/integrador', {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(completeConfig),
-          });
-        } catch (error) {
-          console.error("Erro ao atualizar último sync:", error);
-        }
-        
-        // Atualizar estado local
+
+      atualizarUltimoSync: (timestamp) => {
         set((state) => ({
           integradorConfig: {
             ...state.integradorConfig,
@@ -249,430 +162,458 @@ export const useInventarioStore = create<InventarioStore>()(
         }));
       },
 
-      // Carregamento inicial
+      // Actions
       carregarInventarioAtivo: async () => {
         set({ isLoading: true, error: null });
         try {
           const res = await fetch('/api/inventarios/ativo');
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao carregar inventário ativo');
-          }
-          const data: Inventario | null = await res.json();
-          set({ inventarioAtual: data });
-          if (data) {
-            await get().carregarContagens(data.id);
-          }
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-
-      atualizarProgressoInventario: async (inventarioId: string) => {
-        try {
-          const response = await fetch(`/api/inventarios/${inventarioId}/progresso`, {
-            method: 'PATCH',
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Erro ao atualizar progresso');
-          }
-
-          const inventarioAtualizado = await response.json();
-          
-          // Atualizar o estado local com o progresso atualizado
-          set((state) => ({
-            inventarioAtual: state.inventarioAtual?.id === inventarioId 
-              ? { ...state.inventarioAtual, progresso: inventarioAtualizado.progresso }
-              : state.inventarioAtual,
-            inventarios: state.inventarios.map((inv) => 
-              inv.id === inventarioId ? { ...inv, progresso: inventarioAtualizado.progresso } : inv
-            ),
-          }));
-        } catch (error) {
-          console.error('Erro ao atualizar progresso:', error);
-        }
-      },
-      
-      carregarInventarios: async () => {
-        set({ isLoading: true, error: null });
-        try {
-          const res = await fetch('/api/inventarios');
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao carregar inventários');
-          }
-          const data: Inventario[] = await res.json();
-          set({ inventarios: data });
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-      carregarContagens: async (inventarioId, forceRefresh = false) => {
-      // Verifica se já há contagens carregadas para evitar requisições desnecessárias
-      const state = get();
-      const idToUse = inventarioId ?? state.inventarioAtual?.id;
-      
-      // Se não tiver ID ou já tiver contagens para este inventário, não faz nova chamada
-      if (!idToUse) {
-        set({ contagens: [] });
-        return;
+          if (res.ok) {
+            const inventario: Inventario = await res.json();
+            set({ inventarioAtual: inventario });
+            await get().carregarContagens(inventario.id);
+} else {
+set({ inventarioAtual: null });
+}
+} catch (err: any) {
+console.error(err);
+set({ error: err.message ?? 'Erro desconhecido' });
+} finally {
+set({ isLoading: false });
+}
+},
+carregarInventarios: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch('/api/inventarios');
+      if (!res.ok) {
+        throw new Error('Erro ao carregar inventários');
       }
-      
-      // Se forceRefresh = true, sempre busca do banco
-      // Senão, evita recarregar se já tiver contagens para este inventário
-      if (!forceRefresh && state.contagens.some(c => c.inventarioId === idToUse)) {
-        return; // Evita requisição redundante
-      }
-      
-      set({ isLoading: true, error: null });
-      try {
-        const res = await fetch(`/api/contagens?inventarioId=${idToUse}`);
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error ?? 'Erro ao carregar contagens');
-        }
-        const data: Contagem[] = await res.json();
-        set({ contagens: data });
-      } catch (err: any) {
-        console.error(err);
-        set({ error: err.message ?? 'Erro desconhecido' });
-      } finally {
-        set({ isLoading: false });
-      }
-    },
-      carregarDadosTransito: async (inventarioId, forceRefresh = false) => {
-        const state = get();
-        const idToUse = inventarioId ?? state.inventarioAtual?.id;
-        
-        if (!idToUse) {
-          set({ dadosTransito: [] });
-          return;
-        }
-        
-        if (!forceRefresh && state.dadosTransito.some(d => d.inventarioId === idToUse)) {
-          return; // Evita requisição redundante
-        }
-        
-        set({ isLoading: true, error: null });
-        try {
-          const res = await fetch(`/api/transito?inventarioId=${idToUse}`);
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao carregar dados de trânsito');
-          }
-          const data: DadosTransito[] = await res.json();
-          set({ dadosTransito: data });
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-        } finally {
-          set({ isLoading: false });
-        }
-      },
+      const inventarios: Inventario[] = await res.json();
+      set({ inventarios });
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
 
-      // Inventário actions
-      iniciarInventario: async (responsavel) => {
-        const { inventarioAtual } = get();
-        if (inventarioAtual?.status === 'ativo') {
-          throw new Error('Já existe um inventário em andamento');
-        }
-        set({ isLoading: true, error: null });
-        try {
-          const res = await fetch('/api/inventarios', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ responsavel }),
-          });
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao iniciar inventário');
-          }
-          const novo: Inventario = await res.json();
-          set((state) => ({
-            inventarioAtual: novo,
-            inventarios: [...state.inventarios, novo],
-          }));
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-          throw err;
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-      finalizarInventario: async () => {
-        const { inventarioAtual } = get();
-        if (!inventarioAtual) {
-          throw new Error('Não há inventário ativo para finalizar');
-        }
-        set({ isLoading: true, error: null });
-        try {
-          const res = await fetch(`/api/inventarios/${inventarioAtual.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'finalizado' }),
-          });
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao finalizar inventário');
-          }
-          const finalizado: Inventario = await res.json();
-          set((state) => ({
-            inventarioAtual: null,
-            inventarios: state.inventarios.map((inv) =>
-              inv.id === finalizado.id ? finalizado : inv
-            ),
-          }));
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-          throw err;
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-      carregarInventario: async (id) => {
-        const { inventarioAtual } = get();
-        if (inventarioAtual?.status === 'ativo') {
-          throw new Error('Finalize o inventário atual antes de carregar outro');
-        }
-        set({ isLoading: true, error: null });
-        try {
-          const res = await fetch(`/api/inventarios/${id}`);
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao carregar inventário');
-          }
-          const inv: Inventario = await res.json();
-          set({ inventarioAtual: inv });
-          await get().carregarContagens(id);
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-          throw err;
-        } finally {
-          set({ isLoading: false });
-        }
-      },
+  carregarContagens: async (inventarioId?: string, forceRefresh = false) => {
+    const { inventarioAtual } = get();
+    const targetId = inventarioId || inventarioAtual?.id;
+    
+    if (!targetId) return;
 
-      // Contagem actions
-      adicionarContagem: async (dados) => {
-        const { inventarioAtual } = get();
-        if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
-          throw new Error('Não há inventário ativo para adicionar contagem');
-        }
-        set({ isLoading: true, error: null });
-        try {
-          const res = await fetch('/api/contagens', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dados),
-          });
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao adicionar contagem');
-          }
-          const nova: Contagem = await res.json();
-          set((state) => ({ contagens: [...state.contagens, nova] }));
-          const event: ContagemChangeEvent = {
+    if (!forceRefresh && get().contagens.length > 0) return;
+
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`/api/contagens?inventarioId=${targetId}`);
+      if (!res.ok) {
+        throw new Error('Erro ao carregar contagens');
+      }
+      const contagens: Contagem[] = await res.json();
+      set({ contagens });
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  carregarDadosTransito: async (inventarioId?: string, forceRefresh = false) => {
+    const { inventarioAtual } = get();
+    const targetId = inventarioId || inventarioAtual?.id;
+    
+    if (!targetId) return;
+
+    if (!forceRefresh && get().dadosTransito.length > 0) return;
+
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`/api/transito?inventarioId=${targetId}`);
+      if (!res.ok) {
+        throw new Error('Erro ao carregar dados de trânsito');
+      }
+      const dadosTransito: DadosTransito[] = await res.json();
+      set({ dadosTransito });
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  iniciarInventario: async (responsavel) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch('/api/inventarios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responsavel }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Erro ao iniciar inventário');
+      }
+      const novoInventario: Inventario = await res.json();
+      set({ inventarioAtual: novoInventario, contagens: [], dadosTransito: [] });
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+      throw err;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  finalizarInventario: async () => {
+    const { inventarioAtual } = get();
+    if (!inventarioAtual) {
+      throw new Error('Não há inventário ativo para finalizar');
+    }
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`/api/inventarios/${inventarioAtual.id}/finalizar`, {
+        method: 'PATCH',
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Erro ao finalizar inventário');
+      }
+      const inventarioFinalizado: Inventario = await res.json();
+      set((state) => ({
+        inventarioAtual: null,
+        inventarios: state.inventarios.map((inv) =>
+          inv.id === inventarioFinalizado.id ? inventarioFinalizado : inv
+        ),
+      }));
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+      throw err;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  carregarInventario: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`/api/inventarios/${id}`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Erro ao carregar inventário');
+      }
+      const inventario: Inventario = await res.json();
+      set({ inventarioAtual: inventario });
+      await get().carregarContagens(id, true);
+      await get().carregarDadosTransito(id, true);
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+      throw err;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  atualizarProgressoInventario: async (inventarioId) => {
+    try {
+      const res = await fetch(`/api/inventarios/${inventarioId}/progesso`, {
+        method: 'PATCH',
+      });
+      if (res.ok) {
+        const inventarioAtualizado = await res.json();
+        set((state) => ({
+          inventarioAtual: state.inventarioAtual?.id === inventarioId ? inventarioAtualizado : state.inventarioAtual,
+          inventarios: state.inventarios.map((inv) =>
+            inv.id === inventarioId ? inventarioAtualizado : inv
+          ),
+        }));
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar progresso:', err);
+    }
+  },
+
+  adicionarContagem: async (dados) => {
+    const { inventarioAtual } = get();
+    if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
+      throw new Error('Não há inventário ativo para adicionar contagem');
+    }
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch('/api/contagens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...dados, inventarioId: inventarioAtual.id }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Erro ao adicionar contagem');
+      }
+      const nova: Contagem = await res.json();
+      set((state) => ({
+        contagens: [nova, ...state.contagens],
+      }));
+
+      // Disparar eventos para listeners
+      const { contagemChangeListeners } = get();
+      contagemChangeListeners.forEach(listener => {
+        listener({
+          tipo: dados.tipo,
+          origem: dados.origem,
+          ativo: dados.ativo,
+          quantidade: dados.quantidade
+        });
+      });
+
+      await get().carregarContagens(inventarioAtual.id, true);
+      await get().atualizarProgressoInventario(inventarioAtual.id);
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+      throw err;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  adicionarContagemBulk: async (dados) => {
+    const { inventarioAtual } = get();
+    if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
+      throw new Error('Não há inventário ativo para adicionar contagens');
+    }
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch('/api/contagens/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...dados, inventarioId: inventarioAtual.id }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Erro ao adicionar contagens');
+      }
+      const result = await res.json();
+
+      // Disparar eventos para listeners
+      const { contagemChangeListeners } = get();
+      dados.itens.forEach(item => {
+        contagemChangeListeners.forEach(listener => {
+          listener({
             tipo: dados.tipo,
             origem: dados.origem,
-            ativo: dados.ativo,
-            quantidade: dados.quantidade,
-          };
-          get().contagemChangeListeners.forEach((fn) => {
-            try {
-              fn(event);
-            } catch (e) {
-              console.error('Erro em listener:', e);
-            }
+            ativo: item.ativo,
+            quantidade: item.quantidade
           });
-          await get().carregarContagens(inventarioAtual.id, true);
-          await get().atualizarProgressoInventario(inventarioAtual.id);
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-          throw err;
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-      editarContagem: async (id, dados) => {
-        const { inventarioAtual } = get();
-        if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
-          throw new Error('Não há inventário ativo para editar contagem');
-        }
-        set({ isLoading: true, error: null });
-        try {
-          const res = await fetch(`/api/contagens/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dados),
-          });
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao editar contagem');
-          }
-          const updated: Contagem = await res.json();
-          set((state) => ({
-            contagens: state.contagens.map((c) =>
-              c.id === id ? updated : c
-            ),
-          }));
-          await get().carregarContagens(inventarioAtual.id, true);
-          await get().atualizarProgressoInventario(inventarioAtual.id);
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-          throw err;
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-      removerContagem: async (id) => {
-        const { inventarioAtual } = get();
-        if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
-          throw new Error('Não há inventário ativo para remover contagem');
-        }
-        set({ isLoading: true, error: null });
-        try {
-          const res = await fetch(`/api/contagens/${id}`, {
-            method: 'DELETE',
-          });
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao remover contagem');
-          }
-          set((state) => ({
-            contagens: state.contagens.filter((c) => c.id !== id),
-          }));
-          await get().carregarContagens(inventarioAtual.id, true);
-          await get().atualizarProgressoInventario(inventarioAtual.id);
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-          throw err;
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-
-      // Trânsito actions
-      adicionarTransito: async (dados) => {
-        const { inventarioAtual } = get();
-        if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
-          throw new Error('Não há inventário ativo para adicionar trânsito');
-        }
-        set({ isLoading: true, error: null });
-        try {
-          const res = await fetch('/api/transito', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...dados, inventarioId: inventarioAtual.id }),
-          });
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao adicionar trânsito');
-          }
-          const novo: DadosTransito = await res.json();
-          set((state) => ({
-            dadosTransito: [...state.dadosTransito, novo],
-          }));
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-          throw err;
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-      atualizarStatusTransito: async (id, status) => {
-        const { inventarioAtual } = get();
-        if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
-          throw new Error('Não há inventário ativo para atualizar trânsito');
-        }
-        set({ isLoading: true, error: null });
-        try {
-          const res = await fetch(`/api/transito/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status }),
-          });
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Erro ao atualizar trânsito');
-          }
-          const updated: DadosTransito = await res.json();
-          set((state) => ({
-            dadosTransito: state.dadosTransito.map((t) =>
-              t.id === id ? updated : t
-            ),
-          }));
-        } catch (err: any) {
-          console.error(err);
-          set({ error: err.message ?? 'Erro desconhecido' });
-          throw err;
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-
-      // Estatísticas
-      getEstatisticas: () => {
-        const { inventarioAtual, contagens } = get();
-        if (!inventarioAtual) {
-          return {
-            totalLojasContadas: 0,
-            totalSetoresContados: 0,
-            lojasPendentes: {},
-            progresso: { lojas: 0, setores: 0, fornecedores: 0 },
-          };
-        }
-        const todas = contagens.filter((c) => c.inventarioId === inventarioAtual.id);
-        const lojasContadas = new Set(
-          todas.filter((c) => c.tipo === 'loja').map((c) => c.origem)
-        );
-        const setoresContados = new Set(
-          todas.filter((c) => c.tipo === 'setor').map((c) => c.origem)
-        );
-        const fornecedoresContados = new Set(
-          todas.filter((c) => c.tipo === 'fornecedor').map((c) => c.origem)
-        );
-        const lojasPendentes: Record<string, string[]> = {};
-        Object.entries(lojas).forEach(([regional, lst]) => {
-          const pend = lst.filter((l) => !lojasContadas.has(l));
-          if (pend.length) lojasPendentes[regional] = pend;
         });
-        const totalLojas = Object.values(lojas).flat().length;
-        const totalSetores = setoresCD.length;
-        const totalFornecedores = 3;
+      });
 
-        return {
-          totalLojasContadas: lojasContadas.size,
-          totalSetoresContados: setoresContados.size,
-          lojasPendentes,
-          progresso: {
-            lojas: Math.round((lojasContadas.size / totalLojas) * 100),
-            setores: Math.round((setoresContados.size / totalSetores) * 100),
-            fornecedores: Math.round((fornecedoresContados.size / totalFornecedores) * 100),
-          },
-        };
-      },
-    }),
-    {
-      name: 'hb-inventory-storage',
-      partialize: (state) => {
-        const { contagemChangeListeners, contagens, dadosTransito, inventarios, ...rest } = state;
-        return rest;
-      },
+      await get().carregarContagens(inventarioAtual.id, true);
+      await get().atualizarProgressoInventario(inventarioAtual.id);
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+      throw err;
+    } finally {
+      set({ isLoading: false });
     }
-  )
+  },
+
+  editarContagem: async (id, dados) => {
+    const { inventarioAtual } = get();
+    if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
+      throw new Error('Não há inventário ativo para editar contagem');
+    }
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`/api/contagens/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dados),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Erro ao editar contagem');
+      }
+      const atualizada: Contagem = await res.json();
+      set((state) => ({
+        contagens: state.contagens.map((c) => (c.id === id ? atualizada : c)),
+      }));
+      await get().carregarContagens(inventarioAtual.id, true);
+      await get().atualizarProgressoInventario(inventarioAtual.id);
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+      throw err;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  removerContagem: async (id) => {
+    const { inventarioAtual } = get();
+    if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
+      throw new Error('Não há inventário ativo para remover contagem');
+    }
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`/api/contagens/${id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Erro ao remover contagem');
+      }
+      set((state) => ({
+        contagens: state.contagens.filter((c) => c.id !== id),
+      }));
+      await get().carregarContagens(inventarioAtual.id, true);
+      await get().atualizarProgressoInventario(inventarioAtual.id);
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+      throw err;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  // Trânsito actions
+  adicionarTransito: async (dados) => {
+    const { inventarioAtual } = get();
+    if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
+      throw new Error('Não há inventário ativo para adicionar trânsito');
+    }
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch('/api/transito', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...dados, inventarioId: inventarioAtual.id }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Erro ao adicionar trânsito');
+      }
+      const novo: DadosTransito = await res.json();
+      set((state) => ({
+        dadosTransito: [...state.dadosTransito, novo],
+      }));
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+      throw err;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  
+  atualizarStatusTransito: async (id, status) => {
+    const { inventarioAtual } = get();
+    if (!inventarioAtual || inventarioAtual.status !== 'ativo') {
+      throw new Error('Não há inventário ativo para atualizar trânsito');
+    }
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`/api/transito/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Erro ao atualizar trânsito');
+      }
+      const updated: DadosTransito = await res.json();
+      set((state) => ({
+        dadosTransito: state.dadosTransito.map((t) =>
+          t.id === id ? updated : t
+        ),
+      }));
+    } catch (err: any) {
+      console.error(err);
+      set({ error: err.message ?? 'Erro desconhecido' });
+      throw err;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  getEstatisticas: (): Estatisticas => {
+    const { inventarioAtual, contagens } = get();
+    if (!inventarioAtual) {
+      return {
+        totalLojasContadas: 0,
+        totalSetoresContados: 0,
+        lojasPendentes: {},
+        progresso: { lojas: 0, setores: 0, fornecedores: 0 },
+      };
+    }
+
+    const contagensInventario = contagens.filter(
+      (c) => c.inventarioId === inventarioAtual.id
+    );
+
+    // Calcular lojas contadas
+    const lojasContadas = new Set(
+      contagensInventario
+        .filter((c) => c.tipo === 'loja')
+        .map((c) => c.origem)
+    );
+
+    // Calcular setores contados
+    const setoresContados = new Set(
+      contagensInventario
+        .filter((c) => c.tipo === 'setor')
+        .map((c) => c.origem)
+    );
+
+    // Calcular fornecedores contados
+    const fornecedoresContados = new Set(
+      contagensInventario
+        .filter((c) => c.tipo === 'fornecedor')
+        .map((c) => c.origem)
+    );
+
+    // Calcular lojas pendentes por regional
+    const lojasPendentes: Record<string, string[]> = {};
+    Object.entries(lojas).forEach(([regional, lojasRegional]) => {
+      const pendentes = lojasRegional.filter(
+        (loja) => !lojasContadas.has(loja)
+      );
+      if (pendentes.length > 0) {
+        lojasPendentes[regional] = pendentes;
+      }
+    });
+
+    // Calcular progresso
+    const totalLojas = Object.values(lojas).flat().length;
+    const totalSetores = setoresCD.length;
+    const totalFornecedores = 3; // ES, SP, RIO
+
+    return {
+      totalLojasContadas: lojasContadas.size,
+      totalSetoresContados: setoresContados.size,
+      lojasPendentes,
+      progresso: {
+        lojas: Math.round((lojasContadas.size / totalLojas) * 100),
+        setores: Math.round((setoresContados.size / totalSetores) * 100),
+        fornecedores: Math.round((fornecedoresContados.size / totalFornecedores) * 100),
+      },
+    };
+  },
+}),
+{
+  name: 'inventario-store',
+  partialize: (state) => ({
+    inventarioAtual: state.inventarioAtual,
+    integradorAtivo: state.integradorAtivo,
+    integradorConfig: state.integradorConfig,
+  }),
+})
 );

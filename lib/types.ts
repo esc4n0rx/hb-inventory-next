@@ -27,6 +27,18 @@ export interface Contagem {
   responsavel: string
 }
 
+export interface ContagemBulk {
+  inventarioId: string
+  tipo: "loja" | "setor" | "fornecedor"
+  origem: string
+  destino?: string
+  responsavel: string
+  itens: {
+    ativo: string
+    quantidade: number
+  }[]
+}
+
 export interface DadosTransito {
   id: string
   inventarioId: string
