@@ -1,12 +1,12 @@
+// app/inventario/transito/page.tsx
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useInventarioStore } from "@/lib/store"
 import { toast } from "sonner"
 import { motion } from "framer-motion"
-import { Edit, Plus, Search, Truck } from "lucide-react"
+import { Edit, Plus, Search, Trash2, MoreHorizontal, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -19,31 +19,55 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { TransitEditDialog } from "@/components/transit-edit-dialog"
+import { TransitMultiDialog } from "@/components/transit-multi-dialog"
+import { TransitStatusIndicator } from "@/components/transit-status-indicator"
 import { ativos } from "@/data/ativos"
 import type { DadosTransito } from "@/lib/types"
 
 const centrosDistribuicao = [
-  "CD Rio de Janeiro",
   "CD São Paulo",
-  "CD Belo Horizonte",
-  "CD Salvador",
-  "CD Recife",
-  "CD Brasília",
+  "CD Espírito Santo", 
+  "CD Rio de Janeiro",
 ]
 
 export default function TransitoPage() {
   const { 
     inventarioAtual, 
     dadosTransito, 
-    adicionarTransito, 
+    adicionarTransito,
+    adicionarTransitoBulk,
+    editarTransito,
+    removerTransito,
     atualizarStatusTransito,
     carregarDadosTransito,
     isLoading 
   } = useInventarioStore()
   
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [multiDialogOpen, setMultiDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [selectedTransit, setSelectedTransit] = useState<DadosTransito | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterStatus, setFilterStatus] = useState<string>("todos")
 
@@ -82,6 +106,35 @@ export default function TransitoPage() {
     setDialogOpen(true)
   }
 
+  const handleOpenMultiDialog = () => {
+    if (!inventarioAtual || inventarioAtual.status !== "ativo") {
+      toast.error("Não há inventário ativo para adicionar dados de trânsito")
+      return
+    }
+
+    setMultiDialogOpen(true)
+  }
+
+  const handleOpenEditDialog = (transito: DadosTransito) => {
+    if (!inventarioAtual || inventarioAtual.status !== "ativo") {
+      toast.error("Não há inventário ativo para editar dados de trânsito")
+      return
+    }
+
+    setSelectedTransit(transito)
+    setEditDialogOpen(true)
+  }
+
+  const handleOpenDeleteDialog = (transito: DadosTransito) => {
+    if (!inventarioAtual || inventarioAtual.status !== "ativo") {
+      toast.error("Não há inventário ativo para remover dados de trânsito")
+      return
+    }
+
+    setSelectedTransit(transito)
+    setDeleteDialogOpen(true)
+  }
+
   const handleCloseDialog = () => {
     setDialogOpen(false)
     resetForm()
@@ -112,6 +165,55 @@ export default function TransitoPage() {
         toast.error(error.message)
       } else {
         toast.error("Erro ao processar dados de trânsito")
+      }
+    }
+  }
+
+  const handleMultiSubmit = async (dados: {
+    origem: string
+    destino: string
+    itens: { ativo: string; quantidade: number }[]
+  }) => {
+    try {
+      await adicionarTransitoBulk(dados)
+      toast.success(`${dados.itens.length} ${dados.itens.length === 1 ? 'item adicionado' : 'itens adicionados'} ao trânsito com sucesso!`)
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message)
+      } else {
+        toast.error("Erro ao processar dados de trânsito")
+      }
+      throw error
+    }
+  }
+
+  const handleEditSubmit = async (id: string, dados: Partial<DadosTransito>) => {
+    try {
+      await editarTransito(id, dados)
+      toast.success("Dados de trânsito atualizados com sucesso!")
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message)
+      } else {
+        toast.error("Erro ao atualizar dados de trânsito")
+      }
+      throw error
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!selectedTransit) return
+
+    try {
+      await removerTransito(selectedTransit.id)
+      toast.success("Dados de trânsito removidos com sucesso!")
+      setDeleteDialogOpen(false)
+      setSelectedTransit(null)
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message)
+      } else {
+        toast.error("Erro ao remover dados de trânsito")
       }
     }
   }
@@ -147,61 +249,47 @@ export default function TransitoPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold">Dados do Trânsito</h1>
-            <p className="text-muted-foreground">Gerencie os ativos em trânsito entre CDs</p>
+            <p className="text-muted-foreground">Gerencie os ativos em trânsito entre centros de distribuição</p>
           </div>
 
-          <Button
-            onClick={handleOpenDialog}
-            disabled={!inventarioAtual || inventarioAtual.status !== "ativo" || isLoading}
-            className="flex items-center gap-2"
-          >
-            {isLoading ? (
-              <>
-                <svg
-                  className="animate-spin -ml-1 mr-2 h-4 w-4"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Carregando...
-              </>
-            ) : (
-              <>
-                <Plus className="h-4 w-4" />
-                Novo Trânsito
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleOpenDialog}
+              disabled={!inventarioAtual || inventarioAtual.status !== "ativo" || isLoading}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Item Único
+            </Button>
+
+            <Button
+              onClick={handleOpenMultiDialog}
+              disabled={!inventarioAtual || inventarioAtual.status !== "ativo" || isLoading}
+              className="flex items-center gap-2"
+            >
+              {isLoading ? (
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+              ) : (
+                <Package className="h-4 w-4" />
+              )}
+              Múltiplos Itens
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
-              type="search"
-              placeholder="Buscar dados de trânsito..."
-              className="pl-8"
+              placeholder="Buscar por origem, destino ou ativo..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
             />
           </div>
-
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Filtrar por status" />
             </SelectTrigger>
             <SelectContent>
@@ -247,74 +335,87 @@ export default function TransitoPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Origem</TableHead>
-                  <TableHead>Destino</TableHead>
+                  <TableHead>Status & Rota</TableHead>
                   <TableHead>Ativo</TableHead>
                   <TableHead>Quantidade</TableHead>
                   <TableHead>Data de Envio</TableHead>
-                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTransito.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center h-24">
+                    <TableCell colSpan={5} className="text-center h-24">
                       Nenhum dado de trânsito encontrado
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredTransito.map((transito) => (
                     <TableRow key={transito.id}>
-                      <TableCell>{transito.origem}</TableCell>
-                      <TableCell>{transito.destino}</TableCell>
-                      <TableCell>{transito.ativo}</TableCell>
-                      <TableCell>{transito.quantidade}</TableCell>
-                      <TableCell>{new Date(transito.dataEnvio).toLocaleString("pt-BR")}</TableCell>
+                      <TableCell className="min-w-[300px]">
+                        <TransitStatusIndicator
+                          status={transito.status}
+                          origem={transito.origem}
+                          destino={transito.destino}
+                          dataEnvio={transito.dataEnvio}
+                          dataRecebimento={transito.dataRecebimento}
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium">{transito.ativo}</TableCell>
                       <TableCell>
-                        <Badge
-                          variant={
-                            transito.status === "recebido"
-                              ? "default"
-                              : transito.status === "enviado"
-                                ? "secondary"
-                                : "outline"
-                          }
-                        >
-                          {transito.status === "recebido"
-                            ? "Recebido"
-                            : transito.status === "enviado"
-                              ? "Enviado"
-                              : "Pendente"}
-                        </Badge>
+                        <Badge variant="secondary">{transito.quantidade}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(transito.dataEnvio).toLocaleString("pt-BR")}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          {transito.status !== "recebido" && inventarioAtual.status === "ativo" && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleUpdateStatus(transito.id, "recebido")}
-                              className="flex items-center gap-1"
-                              disabled={isLoading}
+                              variant="ghost"
+                              className="h-8 w-8 p-0"
+                              disabled={!inventarioAtual || inventarioAtual.status !== "ativo"}
                             >
-                              <Truck className="h-3 w-3" />
-                              <span>Marcar como Recebido</span>
+                              <MoreHorizontal className="h-4 w-4" />
                             </Button>
-                          )}
-                          {transito.status === "recebido" && inventarioAtual.status === "ativo" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleOpenEditDialog(transito)}
+                              className="flex items-center gap-2"
+                            >
+                              <Edit className="h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
                               onClick={() => handleUpdateStatus(transito.id, "enviado")}
-                              className="flex items-center gap-1"
-                              disabled={isLoading}
+                              disabled={transito.status === "enviado"}
                             >
-                              <Edit className="h-3 w-3" />
-                              <span>Marcar como Enviado</span>
-                            </Button>
-                          )}
-                        </div>
+                              Marcar como Enviado
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleUpdateStatus(transito.id, "recebido")}
+                              disabled={transito.status === "recebido"}
+                            >
+                              Marcar como Recebido
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleUpdateStatus(transito.id, "pendente")}
+                              disabled={transito.status === "pendente"}
+                            >
+                              Marcar como Pendente
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleOpenDeleteDialog(transito)}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -325,11 +426,12 @@ export default function TransitoPage() {
         )}
       </div>
 
+      {/* Dialog para item único */}
       <Dialog open={dialogOpen} onOpenChange={handleCloseDialog}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Novo Trânsito</DialogTitle>
-            <DialogDescription>Adicione dados de ativos em trânsito entre CDs.</DialogDescription>
+            <DialogDescription>Adicione dados de ativos em trânsito entre centros de distribuição.</DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit}>
@@ -369,11 +471,13 @@ export default function TransitoPage() {
                     <SelectValue placeholder="Selecione o destino" />
                   </SelectTrigger>
                   <SelectContent>
-                    {centrosDistribuicao.map((cd) => (
-                      <SelectItem key={cd} value={cd}>
-                        {cd}
-                      </SelectItem>
-                    ))}
+                    {centrosDistribuicao
+                      .filter((cd) => cd !== formData.origem)
+                      .map((cd) => (
+                        <SelectItem key={cd} value={cd}>
+                          {cd}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -382,8 +486,8 @@ export default function TransitoPage() {
                 <Label htmlFor="ativo" className="text-right">
                   Ativo
                 </Label>
-                <Select 
-                  value={formData.ativo} 
+                <Select
+                  value={formData.ativo}
                   onValueChange={(value) => setFormData({ ...formData, ativo: value })}
                   disabled={isLoading}
                 >
@@ -409,29 +513,10 @@ export default function TransitoPage() {
                   type="number"
                   min="1"
                   value={formData.quantidade}
-                  onChange={(e) => setFormData({ ...formData, quantidade: Number.parseInt(e.target.value) || 1 })}
+                  onChange={(e) => setFormData({ ...formData, quantidade: Number(e.target.value) || 1 })}
+                  disabled={isLoading}
                   className="col-span-3"
-                  disabled={isLoading}
                 />
-              </div>
-
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="status" className="text-right">
-                  Status
-                </Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => setFormData({ ...formData, status: value as DadosTransito["status"] })}
-                  disabled={isLoading}
-                >
-                  <SelectTrigger id="status" className="col-span-3">
-                    <SelectValue placeholder="Selecione o status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="enviado">Enviado</SelectItem>
-                    <SelectItem value="pendente">Pendente</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </div>
 
@@ -442,38 +527,61 @@ export default function TransitoPage() {
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button type="submit" disabled={isLoading}>
                   {isLoading ? (
-                    <>
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-4 w-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      Adicionando...
-                    </>
-                  ) : (
-                    "Adicionar Trânsito"
-                  )}
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"
+                    />
+                  ) : null}
+                  Adicionar Trânsito
                 </Button>
               </motion.div>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog para múltiplos itens */}
+      <TransitMultiDialog
+        open={multiDialogOpen}
+        onOpenChange={setMultiDialogOpen}
+        onSubmit={handleMultiSubmit}
+        isLoading={isLoading}
+      />
+
+      {/* Dialog para edição */}
+      <TransitEditDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        transitData={selectedTransit}
+        onSubmit={handleEditSubmit}
+        isLoading={isLoading}
+      />
+
+      {/* Dialog de confirmação para exclusão */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir este registro de trânsito? Esta ação não pode ser desfeita.
+              {selectedTransit && (
+                <div className="mt-2 p-2 bg-muted rounded text-sm">
+                  <strong>Ativo:</strong> {selectedTransit.ativo}<br />
+                  <strong>Rota:</strong> {selectedTransit.origem} → {selectedTransit.destino}<br />
+                  <strong>Quantidade:</strong> {selectedTransit.quantidade}
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

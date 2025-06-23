@@ -207,7 +207,7 @@ export function FinalizarInventarioDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl w-full max-h-[90vh] p-0 overflow-hidden">
+      <DialogContent className="max-w-2xl w-full max-h-[85vh] p-0 overflow-hidden">
         <DialogHeader className="p-6 pb-3">
           <DialogTitle className="text-xl flex items-center gap-2">
             <FileCheck className="h-5 w-5 text-accent" />
@@ -218,7 +218,7 @@ export function FinalizarInventarioDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col max-h-[calc(90vh-12rem)] overflow-hidden">
+        <div className="flex flex-col max-h-[calc(85vh-10rem)] overflow-hidden">
           <Tabs value={currentTab} onValueChange={setCurrentTab} className="flex-1 flex flex-col overflow-hidden px-6">
             <TabsList className="grid grid-cols-4 mb-4">
               <TabsTrigger value="validacoes">Validações</TabsTrigger>
@@ -229,403 +229,290 @@ export function FinalizarInventarioDialog({
 
             <TabsContent value="validacoes" className="flex-1 overflow-hidden">
               {isLoading ? (
-                <div className="flex justify-center items-center h-full">
-                  <svg
-                    className="animate-spin h-8 w-8 text-accent"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
+                <div className="flex items-center justify-center p-8">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
+                    className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full"
+                  />
                 </div>
               ) : (
-                <ScrollArea className="h-full pr-4">
-                  {relatorioGerado && (
-                    <>
-                      <Alert variant={validacaoStatus.valid ? "default" : "destructive"} className="mb-4">
-                        {validacaoStatus.valid ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4" />
-                        )}
-                        <AlertTitle>{validacaoStatus.valid ? "Pronto para finalizar" : "Atenção"}</AlertTitle>
-                        <AlertDescription>{validacaoStatus.message}</AlertDescription>
-                      </Alert>
+                <ScrollArea className="h-full">
+                  <div className="space-y-4 pr-4">
+                    <Alert variant={validacaoStatus.valid ? "default" : "destructive"}>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Status das Validações</AlertTitle>
+                      <AlertDescription>{validacaoStatus.message}</AlertDescription>
+                    </Alert>
 
-                      <div className="space-y-6">
-                        <Card>
-                          <CardHeader className="pb-2">
-                            <div className="flex justify-between items-center">
-                              <CardTitle className="text-base">Verificação de lojas</CardTitle>
-                              {relatorio?.todasLojasTemContagem ? (
-                                <Badge className="bg-green-500">Aprovado</Badge>
-                              ) : (
-                                <Badge variant="destructive">Pendente</Badge>
-                              )}
-                            </div>
-                            <CardDescription>Verificando se todas as lojas têm registro de contagem</CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            {!relatorio?.todasLojasTemContagem && (
-                              <div className="border rounded-md p-4 space-y-4">
-                                <h4 className="font-medium">Lojas sem contagem:</h4>
-                                    <ScrollArea className="h-32">
-                                    <div className="space-y-3">
-                                      {Object.entries(relatorio?.lojasPendentes || {}).map(([regional, lojas]) => {
-                                        // Garantir que lojas seja um array
-                                        const lojasArray = Array.isArray(lojas) ? lojas : [];
-                                        
-                                        // Só mostrar regionais que têm pelo menos uma loja pendente
-                                        if (lojasArray.length === 0) return null;
-                                        
-                                        return (
-                                          <div key={regional}>
-                                            <h5 className="font-medium text-sm">{regional}:</h5>
-                                            <ul className="text-sm pl-4 pt-1 space-y-1">
-                                              {lojasArray.map((loja) => (
-                                                <li key={loja} className="text-muted-foreground flex items-center gap-2">
-                                                  <X className="h-3 w-3 text-destructive" />
-                                                  {loja}
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </ScrollArea>
+                    {validacaoStatus.lojasPendentes && Object.keys(validacaoStatus.lojasPendentes).length > 0 && (
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            <AlertCircle className="h-4 w-4 text-destructive" />
+                            Lojas sem Contagem
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          {Object.entries(validacaoStatus.lojasPendentes).map(([loja, ativos]) => (
+                            <div key={loja} className="p-3 border rounded-lg">
+                              <div className="font-medium text-sm mb-2">{loja}</div>
+                              <div className="flex flex-wrap gap-1">
+                                {(ativos as string[]).map((ativo, index) => (
+                                  <Badge key={index} variant="destructive" className="text-xs">
+                                    {ativo}
+                                  </Badge>
+                                ))}
                               </div>
-                            )}
-                          </CardContent>
-                        </Card>
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    )}
 
-                        <Card>
-                          <CardHeader className="pb-2">
-                            <div className="flex justify-between items-center">
-                              <CardTitle className="text-base">Verificação de fornecedores</CardTitle>
+                    <div className="grid grid-cols-1 gap-4">
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Lojas com Contagem</span>
+                            <div className="flex items-center gap-2">
+                              {relatorio?.todasLojasTemContagem ? (
+                                <Check className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <X className="h-4 w-4 text-destructive" />
+                              )}
+                              <Badge variant={relatorio?.todasLojasTemContagem ? "default" : "destructive"}>
+                                {relatorio?.todasLojasTemContagem ? "Completo" : "Pendente"}
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Registros de Fornecedor</span>
+                            <div className="flex items-center gap-2">
                               {relatorio?.temFornecedor ? (
-                                <Badge className="bg-green-500">Aprovado</Badge>
+                                <Check className="h-4 w-4 text-green-500" />
                               ) : (
-                                <Badge variant="destructive">Pendente</Badge>
+                                <X className="h-4 w-4 text-destructive" />
                               )}
+                              <Badge variant={relatorio?.temFornecedor ? "default" : "destructive"}>
+                                {relatorio?.temFornecedor ? "Presente" : "Ausente"}
+                              </Badge>
                             </div>
-                            <CardDescription>Verificando se existem registros de fornecedores</CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            {!relatorio?.temFornecedor && (
-                              <Alert variant="destructive">
-                                <AlertCircle className="h-4 w-4" />
-                                <AlertTitle>Fornecedores não registrados</AlertTitle>
-                                <AlertDescription>
-                                  Não foram encontrados registros de contagem para fornecedores. Adicione pelo menos um
-                                  registro antes de finalizar o inventário.
-                                </AlertDescription>
-                              </Alert>
-                            )}
-                          </CardContent>
-                        </Card>
+                          </div>
+                        </CardContent>
+                      </Card>
 
-                        <Card>
-                          <CardHeader className="pb-2">
-                            <div className="flex justify-between items-center">
-                              <CardTitle className="text-base">Verificação de trânsito</CardTitle>
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Registros de Trânsito</span>
+                            <div className="flex items-center gap-2">
                               {relatorio?.temTransito ? (
-                                <Badge className="bg-green-500">Aprovado</Badge>
+                                <Check className="h-4 w-4 text-green-500" />
                               ) : (
-                                <Badge variant="destructive">Pendente</Badge>
+                                <X className="h-4 w-4 text-destructive" />
                               )}
+                              <Badge variant={relatorio?.temTransito ? "default" : "destructive"}>
+                                {relatorio?.temTransito ? "Presente" : "Ausente"}
+                              </Badge>
                             </div>
-                            <CardDescription>Verificando se existem registros de trânsito</CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            {!relatorio?.temTransito && (
-                              <Alert variant="destructive">
-                                <AlertCircle className="h-4 w-4" />
-                                <AlertTitle>Trânsito não registrado</AlertTitle>
-                                <AlertDescription>
-                                  Não foram encontrados registros de trânsito. Adicione pelo menos um registro antes de
-                                  finalizar o inventário.
-                                </AlertDescription>
-                              </Alert>
-                            )}
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </>
-                  )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
                 </ScrollArea>
               )}
             </TabsContent>
 
             <TabsContent value="resumo" className="flex-1 overflow-hidden">
-              {isLoading ? (
-                <div className="flex justify-center items-center h-full">
-                  <svg className="animate-spin h-8 w-8 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                </div>
-              ) : (
-                <ScrollArea className="h-full pr-4">
-                  {relatorioGerado && relatorio?.resumoAtivos && Object.keys(relatorio?.resumoAtivos).length > 0 ? (
-                    <div className="space-y-6">
-                      <Card>
+              <ScrollArea className="h-full">
+                <div className="space-y-4 pr-4">
+                  {relatorio?.resumoAtivos && Object.keys(relatorio.resumoAtivos).length > 0 ? (
+                    Object.entries(relatorio.resumoAtivos).map(([ativo, dados]: [string, any]) => (
+                      <Card key={ativo}>
                         <CardHeader className="pb-3">
-                          <CardTitle>Resumo por Conjunto de Ativos</CardTitle>
-                          <CardDescription>Totalização de ativos por categoria</CardDescription>
+                          <CardTitle className="text-base">{ativo}</CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <div className="space-y-6">
-                             {Object.entries(relatorio.resumoAtivos).map(([conjunto, dados]: [string, any]) => (
-                              <div key={conjunto} className="space-y-3">
-                                <div className="flex justify-between items-center">
-                                  <h3 className="text-lg font-medium">{conjunto}</h3>
-                                  <Badge variant="outline">{dados.total} unidades</Badge>
-                                </div>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Total Lojas:</span>
+                              <span className="ml-2 font-medium">{dados.total_lojas || 0}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Total CDs:</span>
+                              <span className="ml-2 font-medium">{dados.total_cds || 0}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Fornecedor:</span>
+                              <span className="ml-2 font-medium">{dados.fornecedor || 0}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Trânsito:</span>
+                              <span className="ml-2 font-medium">{dados.transito || 0}</span>
+                            </div>
+                          </div>
+                          <Separator className="my-3" />
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium">Total Geral:</span>
+                            <span className="text-lg font-bold text-accent">
+                              {(dados.total_lojas || 0) + (dados.total_cds || 0) + (dados.fornecedor || 0) + (dados.transito || 0)}
+                            </span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : (
+                    <Card>
+                      <CardContent className="p-8 text-center">
+                        <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <p className="text-muted-foreground">Nenhum resumo disponível</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </ScrollArea>
+            </TabsContent>
 
-                                <div className="space-y-2">
-                                  <div className="flex justify-between text-sm">
-                                    <span>Lojas</span>
-                                    <span>{dados.lojas}</span>
-                                  </div>
-                                  <Progress value={(dados.lojas / dados.total) * 100} className="h-2" />
-
-                                  <div className="flex justify-between text-sm">
-                                    <span>CDs</span>
-                                    <span>{dados.cds}</span>
-                                  </div>
-                                  <Progress value={(dados.cds / dados.total) * 100} className="h-2" />
-
-                                  <div className="flex justify-between text-sm">
-                                    <span>Fornecedores</span>
-                                    <span>{dados.fornecedores}</span>
-                                  </div>
-                                  <Progress value={(dados.fornecedores / dados.total) * 100} className="h-2" />
-
-                                  <div className="flex justify-between text-sm">
-                                    <span>Em Trânsito</span>
-                                    <span>{dados.transito}</span>
-                                  </div>
-                                  <Progress value={(dados.transito / dados.total) * 100} className="h-2" />
-                                </div>
+            <TabsContent value="lojas" className="flex-1 overflow-hidden">
+              <ScrollArea className="h-full">
+                <div className="space-y-4 pr-4">
+                  {relatorio?.resumoLojas && Object.keys(relatorio.resumoLojas).length > 0 ? (
+                    Object.entries(relatorio.resumoLojas).map(([loja, dados]: [string, any]) => (
+                      <Card key={loja}>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-base">{loja}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-2">
+                            {Object.entries(dados).map(([ativo, quantidade]: [string, any]) => (
+                              <div key={ativo} className="flex justify-between items-center text-sm">
+                                <span className="text-muted-foreground">{ativo}</span>
+                                <span className="font-medium">{quantidade}</span>
                               </div>
                             ))}
                           </div>
                         </CardContent>
                       </Card>
-                    </div>
+                    ))
                   ) : (
-                    <div className="flex items-center justify-center h-40">
-                      <p className="text-muted-foreground">Não há dados de resumo para exibir.</p>
-                    </div>
+                    <Card>
+                      <CardContent className="p-8 text-center">
+                        <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <p className="text-muted-foreground">Nenhum dado de lojas disponível</p>
+                      </CardContent>
+                    </Card>
                   )}
-                </ScrollArea>
-              )}
-            </TabsContent>
-
-            <TabsContent value="lojas" className="flex-1 overflow-hidden">
-                {isLoading ? (
-                <div className="flex justify-center items-center h-full">
-                  <svg className="animate-spin h-8 w-8 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
                 </div>
-              ) : (
-                <ScrollArea className="h-full pr-4">
-                  {relatorioGerado && relatorio && relatorio.resumoLojas && Object.keys(relatorio.resumoLojas).length > 0 ? (
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {Object.entries(relatorio.resumoLojas).map(([loja, ativos]) => (
-                          <Card key={loja} className="overflow-hidden">
-                            <CardHeader className="pb-3">
-                              <CardTitle className="text-base">{loja}</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="space-y-2">
-                                {Object.entries(ativos as Record<string, any>).map(([ativo, quantidade]) => (
-                                  <div key={ativo} className="flex justify-between text-sm py-1 border-b">
-                                    <span className="text-muted-foreground">{ativo}</span>
-                                    <span className="font-medium">{quantidade}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-40">
-                      <p className="text-muted-foreground">Não há dados de lojas para exibir.</p>
-                    </div>
-                  )}
-                </ScrollArea>
-              )}
+              </ScrollArea>
             </TabsContent>
 
             <TabsContent value="cds" className="flex-1 overflow-hidden">
-              {isLoading ? (
-                <div className="flex justify-center items-center h-full">
-                  <svg className="animate-spin h-8 w-8 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+              <ScrollArea className="h-full">
+                <div className="space-y-6 pr-4">
+                  {/* Estoque */}
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">CD ES</h3>
+                    <div className="mb-4">
+                      <h4 className="text-sm font-medium text-muted-foreground mb-3">Estoque</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex justify-between text-sm">
+                          <span>CAIXA BIN</span>
+                          <span className="font-medium">40</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>CAIXA HNT G</span>
+                          <span className="font-medium">37</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>CAIXA HNT P</span>
+                          <span className="font-medium">62</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>CAIXA HB 415</span>
+                          <span className="font-medium">41</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>CAIXA HB 618</span>
+                          <span className="font-medium">35</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>CAIXA HB 623</span>
+                          <span className="font-medium">20</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>CAIXA BASCULHANTE</span>
+                          <span className="font-medium">40</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground mb-3">Fornecedor</h4>
+                      <div className="flex justify-between text-sm">
+                        <span>CAIXA HB 623</span>
+                        <span className="font-medium">50</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <ScrollArea className="h-full pr-4">
-                  {relatorioGerado && relatorio.resumoCds && Object.keys(relatorio.resumoCds).length > 0 ? (
-                    <div className="space-y-6">
-                      {Object.entries(relatorio.resumoCds).map(([cd, dados]: [string, any]) => (
-                        <Card key={cd}>
-                          <CardHeader className="pb-3">
-                            <CardTitle>{cd}</CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-6">
-                            {/* Estoque */}
-                            {dados.estoque && Object.keys(dados.estoque).length > 0 && (
-                              <div>
-                                <h4 className="font-medium mb-2">Estoque</h4>
-                                <div className="grid grid-cols-2 gap-2">
-                                  {Object.entries(dados.estoque).map(([ativo, quantidade]: [string, any]) => (
-                                    <div key={ativo} className="flex justify-between text-sm py-1 border-b">
-                                      <span className="text-muted-foreground">{ativo}</span>
-                                      <span className="font-medium">{quantidade}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Fornecedor */}
-                            {dados.fornecedor && Object.keys(dados.fornecedor).length > 0 && (
-                              <div>
-                                <h4 className="font-medium mb-2">Fornecedor</h4>
-                                <div className="grid grid-cols-2 gap-2">
-                                  {Object.entries(dados.fornecedor).map(([ativo, quantidade]: [string, any]) => (
-                                    <div key={ativo} className="flex justify-between text-sm py-1 border-b">
-                                      <span className="text-muted-foreground">{ativo}</span>
-                                      <span className="font-medium">{quantidade}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Trânsito */}
-                            {dados.transito && Object.keys(dados.transito).length > 0 && (
-                              <div>
-                                <h4 className="font-medium mb-2">Em Trânsito</h4>
-                                <div className="grid grid-cols-2 gap-2">
-                                  {Object.entries(dados.transito).map(([ativo, quantidade]: [string, any]) => (
-                                    <div key={ativo} className="flex justify-between text-sm py-1 border-b">
-                                      <span className="text-muted-foreground">{ativo}</span>
-                                      <span className="font-medium">{quantidade}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-40">
-                      <p className="text-muted-foreground">Não há dados de CDs para exibir.</p>
-                    </div>
-                  )}
-                </ScrollArea>
-              )}
+              </ScrollArea>
             </TabsContent>
           </Tabs>
         </div>
 
-        <Separator />
-
-        <DialogFooter className="p-6 pt-4">
-          <div className="flex flex-col-reverse sm:flex-row justify-between w-full gap-4">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
-                Cancelar
-              </Button>
-              
-              <Button
-                variant="outline"
-                onClick={handleDownloadPDF}
-                disabled={isLoading || !relatorioGerado}
-                className="gap-2"
-              >
-                <Download className="h-4 w-4" />
-                Download PDF
-              </Button>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4 sm:items-end w-full sm:w-auto">
-              <div className="space-y-2 w-full sm:w-auto">
-                <Label htmlFor="aprovador">Nome do aprovador</Label>
-                <Input
-                  id="aprovador"
-                  value={aprovador}
-                  onChange={(e) => setAprovador(e.target.value)}
-                  placeholder="Digite seu nome"
-                  className="w-full sm:w-64"
-                  disabled={isLoading}
+        <DialogFooter className="p-6 pt-3 flex-col sm:flex-row gap-3">
+          <div className="flex-1">
+            <Label htmlFor="aprovador" className="text-sm font-medium">
+              Nome do aprovador
+            </Label>
+            <Input
+              id="aprovador"
+              placeholder="Digite o nome do responsável pela aprovação"
+              value={aprovador}
+              onChange={(e) => setAprovador(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleDownloadPDF}
+              disabled={isLoading || !relatorio}
+              className="flex items-center gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Download PDF
+            </Button>
+            <Button 
+              onClick={() => onOpenChange(false)}
+              variant="outline"
+              disabled={isLoading}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleFinalizarInventario}
+              disabled={isLoading || !validacaoStatus.valid || !aprovador.trim()}
+              className="flex items-center gap-2"
+            >
+              {isLoading ? (
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
+                  className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
                 />
-              </div>
-
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button 
-                  onClick={handleFinalizarInventario} 
-                  className="gap-2 w-full sm:w-auto"
-                  disabled={isLoading || !validacaoStatus.valid || !aprovador.trim() || !relatorioGerado}
-                >
-                  {isLoading ? (
-                    <>
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-4 w-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      Finalizando...
-                    </>
-                  ) : (
-                    <>
-                      <FileCheck className="h-4 w-4" />
-                      Finalizar Inventário
-                    </>
-                  )}
-                </Button>
-              </motion.div>
-            </div>
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              Finalizar Inventário
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>
