@@ -11,13 +11,21 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const inventarioId = searchParams.get('inventarioId');
+  const inventarioCodigo = searchParams.get('inventario');
   const tipo = searchParams.get('tipo');
 
   let query = supabase.from('contagenshb').select('*');
 
   // Aplicar filtros se fornecidos
   if (inventarioId) {
-    query = query.eq('inventario_id', inventarioId);
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(inventarioId)) {
+      query = query.eq('inventario_id', inventarioId);
+    } else {
+      query = query.eq('codigo_inventario', inventarioId);
+    }
+  } else if (inventarioCodigo) {
+    query = query.eq('codigo_inventario', inventarioCodigo);
   }
   
   if (tipo) {
@@ -35,11 +43,20 @@ export async function GET(request: Request) {
 
   // Converter snake_case para camelCase
   const contagens = data.map(contagem => {
+    const contagemCamel = snakeToCamel(contagem);
+    const origem =
+      contagemCamel.origem ??
+      contagemCamel.loja ??
+      contagemCamel.setorCd ??
+      contagemCamel.fornecedor ??
+      contagemCamel.cdOrigem ??
+      contagemCamel.cdDestino;
     return {
-      ...snakeToCamel(contagem),
+      ...contagemCamel,
       // Manter compatibilidade com o código existente
-      inventarioId: contagem.inventario_id,
-      dataContagem: contagem.data_contagem
+      inventarioId: contagemCamel.inventarioId ?? contagemCamel.codigoInventario,
+      dataContagem: contagemCamel.dataContagem ?? contagem.data_contagem,
+      origem,
     };
   });
 
