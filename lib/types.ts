@@ -25,6 +25,11 @@ export interface Contagem {
   quantidade: number
   dataContagem: string
   responsavel: string
+  // Campos para contagem em trânsito diretamente na contagem principal
+  // Usado quando a origem é CD SP ou CD ES
+  transito_ativo?: string
+  transito_quantidade?: number
+  transito_responsavel?: string
 }
 
 export interface ContagemBulk {
